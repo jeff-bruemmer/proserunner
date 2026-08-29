@@ -1,5 +1,6 @@
 (ns proserunner.output.format-test
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.string :as string]
             [proserunner.output.format :as format]))
 
 (deftest format-ignored-list-test
@@ -38,4 +39,30 @@
       ;; Verify it produces output
       (is (string? output))
       (is (re-find #"a\.md" output))
-      (is (re-find #"b\.md" output)))))
+      (is (re-find #"b\.md" output))))
+
+  (testing "file headings print without a leading space"
+    (let [results [{:file "a.md" :line-num 1 :col-num 1 :specimen "test1" :message "msg1"}]
+          output (with-out-str (format/group-numbered results))]
+      (is (some #(= "a.md" %) (string/split-lines output))))))
+
+(deftest group-results-alignment-test
+  ;; Line and column numbers of differing widths across two files: the columns
+  ;; must line up throughout, including across the file boundary.
+  (let [results [{:file "a.md" :line-num 7 :col-num 3 :specimen "utilize" :message "Prefer use."}
+                 {:file "a.md" :line-num 1024 :col-num 187 :specimen "really" :message "Overused adverb."}
+                 {:file "b.md" :line-num 96 :col-num 12 :specimen "at this point in time" :message "Omit this phrase."}]
+        output (with-out-str (format/group-numbered results))
+        issue-lines (filter #(string/starts-with? % "[") (string/split-lines output))]
+
+    (testing "every issue is printed"
+      (is (= 3 (count issue-lines))))
+
+    (testing "no tabs are emitted"
+      (is (not (string/includes? output "\t"))))
+
+    (testing "colons align across file groups"
+      (is (apply = (map #(string/index-of % ":") issue-lines))))
+
+    (testing "messages align across file groups"
+      (is (apply = (map #(string/index-of % "->") issue-lines))))))

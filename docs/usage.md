@@ -8,8 +8,8 @@ Everything you need to use Proserunner.
 # Check files - issues get numbers
 proserunner --file /path/to/file
 # Output:
-#  document.md
-# [1]  10:5   "utilize" -> Consider using "use" instead.
+# document.md
+# [1]  10:5   "utilize"  -> Consider using "use" instead.
 # [2]  15:12  "leverage" -> Consider using "use" instead.
 
 # Ignore by number
@@ -144,7 +144,7 @@ Ignore by issue number:
 
 ```bash
 proserunner --file document.md
-# [1]  10:5   "utilize" -> Consider using "use" instead.
+# [1]  10:5   "utilize"  -> Consider using "use" instead.
 # [2]  15:12  "leverage" -> Consider using "use" instead.
 
 proserunner --file document.md --ignore-issues 1,2    # Ignore 1 and 2

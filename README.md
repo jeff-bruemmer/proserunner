@@ -10,9 +10,9 @@ $ proserunner --file document.md
 
 ```
 document.md
-[1]  3:13   "quick as lightning" -> A tired phrase.
-[2]  7:15   "software program" -> Pleonastic phrase.
-[3]  11:49  "hopefully" -> Skunked term: consider rephrasing.
+[1]   3:13  "quick as lightning"  -> A tired phrase.
+[2]   7:15  "software program"    -> Pleonastic phrase.
+[3]  11:49  "hopefully"           -> Skunked term: consider rephrasing.
 [4]  13:8   "Female booksalesman" -> Sexist or ridiculous term.
 ```
 
@@ -24,7 +24,7 @@ $ proserunner --file document.md --ignore-issues 2,3
 
 ```
 document.md
-[1]  3:13   "quick as lightning" -> A tired phrase.
+[1]   3:13  "quick as lightning"  -> A tired phrase.
 [2]  13:8   "Female booksalesman" -> Sexist or ridiculous term.
 ```
 

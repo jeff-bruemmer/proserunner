@@ -14,13 +14,16 @@
   "Groups results by file with issue numbers, preserving order."
   [results]
   (let [indexed-results (map-indexed (fn [idx issue] [(inc idx) issue]) results)
+        ;; Widths span every issue so each file's block shares the same columns
+        widths (prep/column-widths indexed-results)
         ;; Group by file but preserve order using partition-by
         grouped (partition-by (fn [[_ issue]] (:file issue)) indexed-results)]
     (doseq [file-group grouped]
       (when-let [first-item (first file-group)]
-        (println "\n" (:file (second first-item)))
+        (println)
+        (println (:file (second first-item)))
         (doseq [[num issue] file-group]
-          (println (prep/issue-str num issue)))))))
+          (println (prep/issue-str num issue widths)))))))
 
 ;;; Formatters for command output
 
