@@ -24,9 +24,25 @@ bb install           # Build + install to ~/.local/bin
 bb install-system    # Install to /usr/local/bin (needs sudo)
 ```
 
-## Run without installing
+## Babashka only (no GraalVM)
 
-Just use Clojure directly:
+Don't want to install GraalVM? Run proserunner straight from the repo with Babashka:
+
+```bash
+git clone https://github.com/jeff-bruemmer/proserunner.git
+cd proserunner
+bb lint --file /path/to/file-or-dir
+```
+
+**You'll need:**
+
+- Babashka
+
+No build step, no Java. `bb lint` takes every proserunner flag (`bb lint --help`), and startup stays under a second. Relative `--file` paths resolve from the repo directory.
+
+## Run with Clojure
+
+Use the Clojure CLI directly. It runs on the JVM, so startup takes a few seconds:
 
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git

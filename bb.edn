@@ -1,8 +1,6 @@
-{:paths ["src" "resources" "tasks"]
- :deps {org.clojure/tools.cli {:mvn/version "0.4.1"}
-        commons-validator/commons-validator {:mvn/version "1.7"}
-        org.babashka/http-client {:mvn/version "0.4.22"}
-        cheshire/cheshire {:mvn/version "5.13.0"}}
+{;; No :deps: tools.cli, http-client, and cheshire ship with babashka,
+ ;; so `bb lint` works without Java or a deps download.
+ :paths ["src" "resources" "tasks"]
  :tasks
  {:requires ([babashka.process :refer [shell]]
              [babashka.fs :as fs])
@@ -17,7 +15,7 @@
           (alias 'install-helper 'tasks.install))
 
   ;; Main proserunner task (named 'lint' to avoid conflict with proserunner file)
-  lint {:doc "Run proserunner linter on markdown files"
+  lint {:doc "Run proserunner via babashka (no build needed): bb lint --file <file-or-dir>"
         :requires ([proserunner.core :as core])
         :task (apply core/-main cli-args)}
 

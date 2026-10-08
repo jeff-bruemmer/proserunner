@@ -73,7 +73,9 @@ More regular prose.")
                    "  2. Or use SDKMAN: sdk install java 21-graal\n"
                    "After installing GraalVM, make sure native-image is in your PATH:"
                    "  export JAVA_HOME=/path/to/graalvm"
-                   "  export PATH=$JAVA_HOME/bin:$PATH"])
+                   "  export PATH=$JAVA_HOME/bin:$PATH"
+                   "\nDon't want GraalVM? Run without building:"
+                   "  bb lint --file <file-or-dir>"])
 
   (let [java-ver (run-shell "java -version 2>&1 | head -1")
         clojure-ver (run-shell "clojure --version")]

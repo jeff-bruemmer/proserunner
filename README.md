@@ -30,10 +30,22 @@ document.md
 
 ## Quick start
 
+Clone the repo, then pick one:
+
 ```bash
+# Option 1: native binary (needs GraalVM, fastest startup)
+bb install
 proserunner --file document.md    # Check a file
 proserunner --init-project         # Set up project config
+
+# Option 2: babashka only (no build, no GraalVM)
+bb lint --file document.md         # Same flags as proserunner
+
+# Option 3: Clojure CLI (needs Java, slower startup)
+clojure -M:run --file document.md
 ```
+
+See [installation](docs/installation.md) for details.
 
 ## Why it's useful
 
