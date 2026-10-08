@@ -1,6 +1,6 @@
 (ns tasks.build
   (:require [babashka.fs :as fs]
-            [babashka.process :refer [shell process]]
+            [babashka.process :refer [shell]]
             [clojure.string :as str]
             [tasks.util :refer [run-shell run-shell-check print-lines get-file-size]]))
 
@@ -73,8 +73,7 @@ More regular prose.")
                    "  2. Or use SDKMAN: sdk install java 21-graal\n"
                    "After installing GraalVM, make sure native-image is in your PATH:"
                    "  export JAVA_HOME=/path/to/graalvm"
-                   "  export PATH=$JAVA_HOME/bin:$PATH\n"
-                   "Alternatively, run 'bb proserunner' to use without building a native binary."])
+                   "  export PATH=$JAVA_HOME/bin:$PATH"])
 
   (let [java-ver (run-shell "java -version 2>&1 | head -1")
         clojure-ver (run-shell "clojure --version")]
@@ -97,11 +96,8 @@ More regular prose.")
   [path]
   (let [path-str (str path)]
     (and
-     ;; Must be relative path (no leading /)
      (not (str/starts-with? path-str "/"))
-     ;; Must not contain parent directory references
      (not (str/includes? path-str ".."))
-     ;; Must not be empty or just whitespace
      (not (str/blank? path-str)))))
 
 (defn cleanup-artifacts!
@@ -128,46 +124,38 @@ More regular prose.")
   [file-path]
   (fs/set-posix-file-permissions file-path "rwxr-xr-x"))
 
-;; Build workflows
-
-(defn get-classpath!
-  "Get the classpath for native-image build."
-  []
-  (println "Generating classpath...")
-  (let [result (shell {:out :string} "clojure -Spath -A:native-image")]
-    (str/trim (:out result))))
+;; Build workflow
 
 (defn compile-clojure!
   "AOT compile Clojure code to classes."
   []
   (println "Compiling Clojure code...")
-  ;; Ensure classes directory exists
   (fs/create-dirs "classes")
-  (let [result (shell {:continue true} "clojure -M:native-image:compile")]
+  (let [result (shell {:continue true} "clojure -e \"(require 'proserunner.core) (compile 'proserunner.core)\"")]
     (when-not (zero? (:exit result))
       (println "\nERROR: Compilation failed")
       (System/exit (:exit result)))))
 
+(defn get-classpath!
+  "Get the classpath for native-image build."
+  []
+  (println "Generating classpath...")
+  (let [result (shell {:out :string} "clojure -Spath")]
+    (str/trim (:out result))))
+
 (defn native-image-options
   "Generate native-image options based on platform."
   [platform]
-  (let [common-opts ["--future-defaults=all"
-                     "-H:+UnlockExperimentalVMOptions"
-                     "--features=clj_easy.graal_build_time.InitClojureClasses"
-                     ;; Initialize our namespaces and dependencies at build time
-                     "--initialize-at-build-time=com.fasterxml.jackson,proserunner,editors,babashka,cheshire"
+  (let [common-opts ["-H:+UnlockExperimentalVMOptions"
                      "-H:Name=proserunner"
                      "-Dclojure.compiler.direct-linking=true"
+                     "--initialize-at-build-time=clojure,proserunner,editors,babashka,cheshire,com.fasterxml.jackson"
                      "-H:EnableURLProtocols=http,https"
                      "--enable-http"
                      "--enable-https"
-                     "--native-image-info"
                      "--no-fallback"
-                     "-O3"
-                     "--gc=serial"
-                     "-R:MaxHeapSize=4g"
-                     "-J-Xmx8G"
-                     "-J-XX:+UseParallelGC"]
+                     "-O2"
+                     "--gc=serial"]
         arch-opt (if (and (= (:os platform) "Darwin")
                          (= (:arch platform) "arm64"))
                   "-march=armv8-a"
@@ -175,24 +163,17 @@ More regular prose.")
     (conj common-opts arch-opt)))
 
 (defn run-native-image!
-  "Execute native-image build directly."
+  "Execute native-image build."
   [platform classpath]
   (println "\nBuilding native image...")
   (println "This could take 30-60 seconds...\n")
   (let [opts (native-image-options platform)
-        ;; Build full command as a sequence for proper escaping
-        cmd (vec (concat ["native-image" "-cp" classpath] opts ["proserunner.core"]))
-        result @(process cmd {:inherit true :err :inherit :out :inherit :continue true})]
+        ;; Pass argv as a vector so classpath entries containing spaces aren't split
+        cmd (into ["native-image" "-cp" classpath] (conj opts "proserunner.core"))
+        result (apply shell {:continue true :inherit true} cmd)]
     (when-not (zero? (:exit result))
       (println "\nERROR: Native image build failed")
       (System/exit (:exit result)))))
-
-(defn run-build-command!
-  "Execute native-image build command."
-  [platform]
-  (let [classpath (get-classpath!)]
-    (compile-clojure!)
-    (run-native-image! platform classpath)))
 
 (defn test-binary!
   "Test binary by running help command."
@@ -217,7 +198,9 @@ More regular prose.")
     (println "\nCleaning build artifacts...")
     (cleanup-artifacts! build-artifacts)
 
-    (run-build-command! platform)
+    (compile-clojure!)
+    ;; deps.edn :paths already includes "classes"
+    (run-native-image! platform (get-classpath!))
 
     (verify-binary! binary-name)
     (make-executable! binary-name)

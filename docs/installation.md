@@ -2,7 +2,7 @@
 
 ## Native binary (fastest)
 
-Builds a ~20MB binary with ~50ms startup:
+Builds a ~65MB standalone binary with ~50ms startup:
 
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git
@@ -14,7 +14,7 @@ bb install  # Builds and installs to ~/.local/bin
 
 - Babashka
 - GraalVM 25+ with native-image
-- 8GB RAM for building
+- Clojure CLI
 
 **Build commands:**
 

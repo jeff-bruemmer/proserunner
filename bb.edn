@@ -36,7 +36,7 @@
                    :task (base/update-baseline)}
 
   ;; Build tasks (from tasks/build.clj)
-  build {:doc "Build native binary (requires GraalVM native-image)"
+  build {:doc "Build native binary with GraalVM"
          :task (build/build)}
 
   benchmark-build {:doc "Benchmark current native binary performance"
