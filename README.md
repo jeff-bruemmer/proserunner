@@ -30,20 +30,22 @@ document.md
 
 ## Quick start
 
-Clone the repo, then pick one:
+Clone the repo, `cd` into it, then pick one:
 
 ```bash
-# Option 1: native binary (needs GraalVM, fastest startup)
-bb install
-proserunner --file document.md    # Check a file
-proserunner --init-project         # Set up project config
+# Option 1: native binary (needs Babashka, Clojure CLI, and GraalVM; fastest startup)
+bb install                          # Installs to ~/.local/bin (open a new shell if it wasn't on your PATH)
+proserunner --file document.md      # Check a file, from anywhere
+proserunner --init-project          # Set up project config
 
-# Option 2: babashka only (no build, no GraalVM)
-bb lint --file document.md         # Same flags as proserunner
+# Option 2: Babashka only (no build, no Java); run from the repo
+bb lint --file /path/to/document.md # Same flags as proserunner
 
-# Option 3: Clojure CLI (needs Java, slower startup)
-clojure -M:run --file document.md
+# Option 3: Clojure CLI (needs Java and Clojure CLI, slower startup); run from the repo
+clojure -M:run --file /path/to/document.md
 ```
+
+Options 2 and 3 resolve relative paths from the repo directory, so pass an absolute path to your file.
 
 See [installation](docs/installation.md) for details.
 

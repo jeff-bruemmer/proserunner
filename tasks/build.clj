@@ -70,7 +70,7 @@ More regular prose.")
                   ["\nGraalVM native-image is required to build the native binary."
                    "\nInstallation options:"
                    "  1. Download GraalVM: https://www.graalvm.org/downloads/"
-                   "  2. Or use SDKMAN: sdk install java 21-graal\n"
+                   "  2. Or use SDKMAN: sdk install java 25.0.1-graal (versions: sdk list java)\n"
                    "After installing GraalVM, make sure native-image is in your PATH:"
                    "  export JAVA_HOME=/path/to/graalvm"
                    "  export PATH=$JAVA_HOME/bin:$PATH"
@@ -133,7 +133,7 @@ More regular prose.")
   []
   (println "Compiling Clojure code...")
   (fs/create-dirs "classes")
-  (let [result (shell {:continue true} "clojure -e \"(require 'proserunner.core) (compile 'proserunner.core)\"")]
+  (let [result (shell {:continue true} "clojure -M -e \"(require 'proserunner.core) (compile 'proserunner.core)\"")]
     (when-not (zero? (:exit result))
       (println "\nERROR: Compilation failed")
       (System/exit (:exit result)))))
