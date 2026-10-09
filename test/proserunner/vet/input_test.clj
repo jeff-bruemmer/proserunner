@@ -60,8 +60,9 @@
 
 (deftest determine-parallel-settings-test
   (testing "Determines parallel settings from options"
-    (is (= {:parallel-files? true :parallel-lines? true}
-           (#'input/determine-parallel-settings {:parallel-files true})))
+    (is (= {:parallel-files? true :parallel-lines? false}
+           (#'input/determine-parallel-settings {:parallel-files true}))
+        "parallel files turns off parallel lines")
     (is (= {:parallel-files? false :parallel-lines? false}
            (#'input/determine-parallel-settings {:sequential-lines true})))
     (is (= {:parallel-files? false :parallel-lines? true}
@@ -70,9 +71,7 @@
 (deftest make-input-test
   (testing "make-input creates Input record from options"
     (let [temp-dir @test-temp-dir
-          config-path (str (System/getProperty "user.home")
-                          File/separator ".proserunner"
-                          File/separator "config.edn")
+          config-path (proserunner.system/config-path "config.edn")
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "test.md") "# Test file\n\nSome content.")
           opts {:file temp-dir
@@ -123,9 +122,7 @@
 (deftest make-input-with-exclude-patterns
   (testing "make-input respects exclude patterns"
     (let [temp-dir @test-temp-dir
-          config-path (str (System/getProperty "user.home")
-                          File/separator ".proserunner"
-                          File/separator "config.edn")
+          config-path (proserunner.system/config-path "config.edn")
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "include.md") "Include this")
           _ (spit (str temp-dir File/separator "exclude.md") "Exclude this")
@@ -142,9 +139,7 @@
 (deftest make-input-with-multiple-exclude-patterns
   (testing "make-input respects multiple exclude patterns"
     (let [temp-dir @test-temp-dir
-          config-path (str (System/getProperty "user.home")
-                          File/separator ".proserunner"
-                          File/separator "config.edn")
+          config-path (proserunner.system/config-path "config.edn")
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "include.md") "Include this")
           _ (spit (str temp-dir File/separator "exclude1.md") "Exclude this")
@@ -174,9 +169,7 @@
           _ (spit (str temp-dir File/separator "skip.md") "Skip this")
           _ (spit (str subdir File/separator "draft.md") "Draft content")
           opts {:file temp-dir
-                :config (str (System/getProperty "user.home")
-                            File/separator ".proserunner"
-                            File/separator "config.edn")
+                :config (proserunner.system/config-path "config.edn")
                 :output "table"
                 :code-blocks false
                 :quoted-text false
@@ -196,9 +189,7 @@
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "file.md") "Content")
           opts {:file temp-dir
-                :config (str (System/getProperty "user.home")
-                            File/separator ".proserunner"
-                            File/separator "config.edn")
+                :config (proserunner.system/config-path "config.edn")
                 :output "table"
                 :code-blocks false
                 :quoted-text false
@@ -217,9 +208,7 @@
           _ (spit (str temp-dir File/separator "temp.backup") "Backup")
           _ (spit (str temp-dir File/separator "draft.backup") "Draft backup")
           opts {:file temp-dir
-                :config (str (System/getProperty "user.home")
-                            File/separator ".proserunner"
-                            File/separator "config.edn")
+                :config (proserunner.system/config-path "config.edn")
                 :output "table"
                 :code-blocks false
                 :quoted-text false
@@ -246,9 +235,7 @@
                                :ignore-mode :extend}))
               _ (spit (str temp-dir File/separator "test.md") "# Test")
               opts {:file temp-dir
-                    :config (str (System/getProperty "user.home")
-                                File/separator ".proserunner"
-                                File/separator "config.edn")
+                    :config (proserunner.system/config-path "config.edn")
                     :output "table"
                     :parallel-files false}
               input-result (input/make opts)]
@@ -348,12 +335,12 @@
           normalized (input/normalize-input-options opts)]
       (is (false? (:parallel-lines? normalized)))))
 
-  (testing "parallel-files without sequential-lines enables both"
+  (testing "parallel-files without sequential-lines processes lines sequentially"
     (let [opts {:parallel-files true}
           normalized (input/normalize-input-options opts)]
       (is (true? (:parallel-files? normalized)))
-      (is (true? (:parallel-lines? normalized))
-          "parallel-lines should default to true")))
+      (is (false? (:parallel-lines? normalized))
+          "files and lines aren't both parallel")))
 
   (testing "preserves file option"
     (let [opts {:file "test.md"}

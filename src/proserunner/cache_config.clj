@@ -29,7 +29,8 @@
       (get env-vars "PROSERUNNER_CACHE_DIR")
       (when-let [xdg (get env-vars "XDG_CACHE_HOME")]
         (str xdg "/proserunner"))
-      (str (get system-props "java.io.tmpdir") "/proserunner-storage")))
+      (str (or (get env-vars "TMPDIR") (get system-props "java.io.tmpdir"))
+           "/proserunner-storage")))
 
 (defn make-cache-file-path
   "Constructs full path to a cache file.

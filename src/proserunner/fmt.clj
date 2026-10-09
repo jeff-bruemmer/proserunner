@@ -32,7 +32,9 @@
    Map produced sent to ship/print-options."
   [summary]
   (->> summary
-       ;; combine short and long options
-       (map #(assoc % :option (str (:short-opt %) ", " (:long-opt %))))
-       (map #(dissoc % :short-opt :long-opt :id :validate-fn :validate-msg))))
+       ;; combine short and long options, aligning long-only options
+       (map #(assoc % :option (if (:short-opt %)
+                                (str (:short-opt %) ", " (:long-opt %))
+                                (str "    " (:long-opt %)))))
+       (map #(dissoc % :short-opt :id :validate-fn :validate-msg))))
 

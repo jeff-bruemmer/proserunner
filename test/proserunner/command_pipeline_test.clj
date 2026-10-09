@@ -48,11 +48,10 @@
             (is (result/success? effect-result))))))))
 
 (deftest pipeline-validation-failure-test
-  (testing "Validation failure prevents dispatch and execution"
-    (let [opts {:parallel-files true}  ;; Invalid without sequential-lines
+  (testing "Parallel files on its own is valid (it implies sequential lines)"
+    (let [opts {:parallel-files true}
           validation (cmd/validate-options opts)]
-      (is (result/failure? validation))
-      (is (re-find #"parallel" (:error validation)))))
+      (is (result/success? validation))))
 
   (testing "Global and project flags conflict"
     (let [opts {:global true :project true}
@@ -197,6 +196,5 @@
             cmd-result (cmd/dispatch-command opts)]
         (is (= :default (:command cmd-result)))
         (is (some? (:effects cmd-result)))
-        (let [[effect-type _effect-opts title] (first (:effects cmd-result))]
-          (is (= :help/print effect-type))
-          (is (= "P R O S E R U N N E R" title)))))))
+        (let [[effect-type] (first (:effects cmd-result))]
+          (is (= :help/print-concise effect-type)))))))

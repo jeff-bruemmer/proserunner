@@ -19,7 +19,8 @@
 
    See: editors.registry for editor registration and dispatch mechanism."
   (:gen-class)
-  (:require [editors.registry :as registry]))
+  (:require [editors.registry :as registry]
+            [proserunner.console :as console]))
 
 (set! *warn-on-reflection* true)
 
@@ -32,8 +33,8 @@
     (catch Exception e
       (let [{:keys [name kind]} check
             {:keys [file line-num]} line]
-        (println (str "Warning: Check '" name "' (" kind ") failed on "
-                     file ":" line-num ": " (.getMessage e))))
+        (console/warn "Check '" name "' (" kind ") failed on "
+                      file ":" line-num ": " (.getMessage e)))
       line)))
 
 (defn dispatch

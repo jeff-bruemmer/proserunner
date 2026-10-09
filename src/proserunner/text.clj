@@ -175,6 +175,19 @@
                (and (not code-blocks) (:code? %)))
           lines))
 
+(defn- text->lines
+  "Splits `text` into decorated Line records labeled with `file`."
+  [text file code-blocks check-quoted-text]
+  (let [boundary "```"]
+    (vec
+     (->> text
+          string/split-lines
+          (map-indexed number-lines)
+          (remove #(string/blank? (:text %)))
+          (#(mark-code-blocks % boundary))
+          (#(apply-line-transformations % file check-quoted-text))
+          (#(filter-excluded-lines % boundary code-blocks))))))
+
 (defn fetch!
   "Takes a code-blocks boolean and a filepath string. It loads the file
   and returns a Result containing decorated lines. Code-blocks is false by default,
@@ -188,18 +201,36 @@
    (fetch! code-blocks filepath false))
   ([code-blocks filepath check-quoted-text]
    (result/try-result-with-context
-    (fn []
-      (let [normalized-path (file-utils/normalize-path filepath)
-            boundary "```"]
-        (vec
-         (->> filepath
-              slurp
-              string/split-lines
-              (map-indexed number-lines)
-              (remove #(string/blank? (:text %)))
-              (#(mark-code-blocks % boundary))
-              (#(apply-line-transformations % normalized-path check-quoted-text))
-              (#(filter-excluded-lines % boundary code-blocks))))))
+    #(text->lines (slurp filepath)
+                  (file-utils/normalize-path filepath)
+                  code-blocks
+                  check-quoted-text)
     {:filepath filepath :operation :fetch})))
 
+;;;; Standard input
 
+(def stdin-path
+  "The PATH that means read standard input."
+  "-")
+
+(def stdin-name
+  "How results from standard input are labeled."
+  "<stdin>")
+
+(defn stdin?
+  "True when `path` means standard input."
+  [path]
+  (= stdin-path path))
+
+(defn fetch-stdin!
+  "Reads all of *in* and returns a Result containing decorated lines,
+  labeled <stdin>. Text is treated like a markdown file. Fails if it's
+  over the size limit for files."
+  [code-blocks check-quoted-text]
+  (result/try-result-with-context
+   (fn []
+     (let [text (slurp *in*)]
+       (if (> (count (.getBytes ^String text "UTF-8")) max-file-size-bytes)
+         (throw (ex-info (str stdin-name ": " file-size-msg) {}))
+         (text->lines text stdin-name code-blocks check-quoted-text))))
+   {:filepath stdin-name :operation :fetch}))

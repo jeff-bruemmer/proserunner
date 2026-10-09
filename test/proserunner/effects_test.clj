@@ -2,10 +2,13 @@
   "Tests for effect execution.
 
   Tests effect execution machinery and effect description structures."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
+            [proserunner.console :as console]
             [proserunner.effects :as effects]
+            [proserunner.ignore.file :as ignore-file]
             [proserunner.result :as result]
-            [proserunner.test-helpers :refer [with-system-property]]))
+            [proserunner.test-helpers :refer [with-system-property with-temp-dir with-user-home]]))
 
 (defmacro silently
   "Suppresses stdout/stderr during test execution."
@@ -317,3 +320,23 @@
           ignore-map {:ignore #{} :ignore-issues []}
           result (#'effects/select-and-validate-issue-numbers issues ignore-map [1])]
       (is (= 1 (count (:selected-issues result)))))))
+
+(deftest clear-ignored-warns-scripts-without-force-test
+  (with-temp-dir [home "proserunner-clear"]
+    (with-user-home home
+      (let [run (fn [opts interactive?]
+                  (ignore-file/write! {:ignore #{"word"} :ignore-issues #{}})
+                  (let [err (java.io.StringWriter.)
+                        r (with-redefs [console/interactive? (constantly interactive?)
+                                        console/confirm? (constantly true)]
+                            (binding [*err* err
+                                      *out* (java.io.StringWriter.)]
+                              (effects/execute-effect [:ignore/clear opts])))]
+                    {:warned? (str/includes? (str err) effects/clear-without-force-warning)
+                     :cleared (:cleared (:value r))}))]
+        (testing "not in a terminal, without --force: still clears, but warns"
+          (is (= {:warned? true :cleared 1} (run {:global true} false))))
+        (testing "not in a terminal, with --force: clears quietly"
+          (is (= {:warned? false :cleared 1} (run {:global true :force true} false))))
+        (testing "in a terminal: asks instead of warning"
+          (is (= {:warned? false :cleared 1} (run {:global true} true))))))))

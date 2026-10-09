@@ -10,7 +10,8 @@
   - Composition: bind, fmap, traverse, sequence-results
   - Error handling: map-err, or-else, combine, combine-all-errors
   - Utilities: try-result, try-result-with-context, tap, result-or-exit"
-  (:gen-class))
+  (:gen-class)
+  (:require [proserunner.console :as console]))
 
 (set! *warn-on-reflection* true)
 
@@ -121,11 +122,18 @@
      (catch Exception e
        (err (error-fn e) {:exception e :message (.getMessage e)})))))
 
+(defn- result?
+  [v]
+  (or (instance? Success v) (instance? Failure v)))
+
 (defn try-result-with-context
-  "Like try-result but with custom context for errors."
+  "Like try-result but with custom context for errors.
+  If f itself returns a Result, it is returned as is rather than
+  wrapped in another Success, so failures aren't masked."
   [f context-map]
   (try
-    (ok (f))
+    (let [v (f)]
+      (if (result? v) v (ok v)))
     (catch Exception e
       (err (.getMessage e)
            (merge context-map
@@ -134,12 +142,13 @@
 
 ;; Output helpers
 (defn print-failure
-  "Prints failure details without exiting."
+  "Prints a failure's message to stderr without exiting.
+  The context map (which can hold exceptions) prints only when PROSERUNNER_DEBUG is set."
   [result]
   (when (failure? result)
-    (println "Error:" (:error result))
-    (when (seq (:context result))
-      (println "Details:" (:context result)))))
+    (console/error (:error result))
+    (when (and (console/debug?) (seq (:context result)))
+      (console/warn "Details: " (pr-str (:context result))))))
 
 ;; Advanced combinators
 
@@ -197,11 +206,11 @@
   "Extracts value from Success, or prints error and exits on Failure.
   This is the boundary function for converting Results to plain values at app entry points.
 
-  Optional exit-code parameter (default 1).
+  Optional exit-code parameter (default 2, the error exit code).
   Example: (result-or-exit (ok 42)) => 42
-           (result-or-exit (err \"failed\")) => exits with code 1"
+           (result-or-exit (err \"failed\")) => exits with code 2"
   ([result]
-   (result-or-exit result 1))
+   (result-or-exit result 2))
   ([result exit-code]
    (if (success? result)
      (:value result)

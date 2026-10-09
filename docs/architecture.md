@@ -15,9 +15,10 @@ Fast prose linter in Clojure. Modular, functional, data-driven.
 ### Command-effect pattern
 
 ```
-CLI Options → Commands → Effects → Results
+CLI args → Options → Commands → Effects → Results
 ```
 
+- **cli.clj**: Parses args. Commands like `ignore add X` set the same option keys the old flags did (`:add-ignore "X"`), so the rest of the pipeline doesn't know which form was used
 - **commands.clj**: Pure handlers (just data)
 - **effects.clj**: Multimethod dispatcher (does I/O)
 - Logic stays separate from side effects, easy to test
@@ -74,7 +75,7 @@ See [default checks repo](https://github.com/jeff-bruemmer/proserunner-default-c
 
 Layered system (project overrides global):
 
-1. **Global** (`~/.proserunner/`): Personal defaults
+1. **Global** (`~/.config/proserunner/`, or `$XDG_CONFIG_HOME/proserunner/`): Personal defaults
 2. **Project** (`.proserunner/`): Repo settings
 3. **Manifest** ([config/manifest.clj](../src/proserunner/config/manifest.clj)): Finds project config
 4. **Loader** ([config/loader.clj](../src/proserunner/config/loader.clj)): Parses EDN
@@ -84,12 +85,14 @@ First run downloads default checks from GitHub.
 
 **Storage:**
 
-- `~/.proserunner/checks/` - Global checks
-- `~/.proserunner/config.edn` - Global config
-- `~/.proserunner/ignore.edn` - Global ignores
-- `.proserunner/config.edn` - Project config
-- `.proserunner/ignore.edn` - Project ignores (commit this)
-- `~/.proserunner/cache/` - Cache
+- `~/.config/proserunner/default/` - Default checks (downloaded on first run, pinned to a commit and checksum in `config.clj`)
+- `~/.config/proserunner/custom/` - Your global custom checks
+- `~/.config/proserunner/config.edn` - Global config
+- `~/.config/proserunner/ignore.edn` - Global ignores
+- `~/.config/proserunner/.lock` - Held during read-modify-write updates of ignores and config
+- `.proserunner/config.edn` - Project config, including project ignores (commit this)
+- `.proserunner/checks/` - Project checks
+- `$XDG_CACHE_HOME/proserunner/` - Cache (see [usage](usage.md#cache) for the full lookup order)
 
 **Smart defaults**: `--ignore-issues` uses project scope if `.proserunner/` exists, else global. Override with `--global` or `--project`.
 
@@ -136,6 +139,7 @@ src/
 │   └── repetition.clj    # Repetition detection
 │
 └── proserunner/
+    ├── cli.clj           # Argument parsing, commands, deprecated flags
     ├── commands.clj      # Command handlers (pure)
     ├── effects.clj       # Effect execution (I/O)
     ├── process.clj       # Main orchestration
@@ -169,7 +173,7 @@ src/
 
 Starts in [core.clj](../src/proserunner/core.clj) `-main`:
 
-1. Parse CLI args (clojure.tools.cli)
+1. Parse CLI args ([cli.clj](../src/proserunner/cli.clj), on clojure.tools.cli)
 2. Validate options ([commands.clj:344](../src/proserunner/commands.clj))
 3. Dispatch to command handler
 4. Execute effects
@@ -179,7 +183,7 @@ Starts in [core.clj](../src/proserunner/core.clj) `-main`:
 
 Follow command-effect pattern:
 
-1. **Add option** to `core.clj` options vector
+1. **Add an option or command** in `cli.clj`: an entry in `options`, or a word in `commands`/`subcommands` that sets an option key
 2. **Create handler** in `commands.clj`:
    ```clojure
    (defn handle-my-command [opts]
@@ -210,7 +214,7 @@ Hash-based invalidation ([vet/cache.clj](../src/proserunner/vet/cache.clj)):
 
 Cache hits need all three hashes to match. Partial match (checks same, lines changed) = incremental update. Only processes changed lines, reuses cached results.
 
-Cache lives at `~/.proserunner/cache/`.
+Cache lives at `$XDG_CACHE_HOME/proserunner/` by default; see [usage](usage.md#cache) for the full lookup order.
 
 ### Parallelism
 
@@ -230,6 +234,16 @@ bb test              # All tests
 bb test-build        # Build verification
 ```
 
-Or: `clojure -M:test`
+Or: `clojure -M:test`. The `:test` alias loads `test-helpers` first, which points `user.home` at a throwaway directory and hides `$XDG_CONFIG_HOME`, so tests never touch your real config.
+
+### Updating the default checks
+
+Each release installs one commit of [proserunner-default-checks](https://github.com/jeff-bruemmer/proserunner-default-checks), verified by a SHA-256 over the archive's files. To ship newer checks:
+
+```bash
+bb pin-checks        # or: bb pin-checks <branch, tag, or commit>
+```
+
+It prints `default-checks-ref` and `default-checks-sha256`; paste them into `src/proserunner/config.clj`.
 
 See [installation.md](installation.md) for build info.

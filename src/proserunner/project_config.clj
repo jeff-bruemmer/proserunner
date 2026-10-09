@@ -33,7 +33,7 @@
 
 (defn- normalize-check-entry
   "Adds :files to check entry if missing by auto-discovering .edn files.
-   For global config, resolves directory relative to ~/.proserunner/"
+   For global config, resolves directory relative to the global config directory"
   [global-proserunner-dir check-entry]
   (if (contains? check-entry :files)
     check-entry
@@ -42,15 +42,15 @@
       (assoc check-entry :files (or files [])))))
 
 (defn load-global-config
-  "Loads the global configuration from ~/.proserunner/"
+  "Loads the global configuration from the global config directory."
   []
-  (let [config-path (sys/filepath ".proserunner" "config.edn")
+  (let [config-path (sys/config-path "config.edn")
         config-file (io/file config-path)]
     (if (.exists config-file)
       (let [config-result (loader/load-config-from-file config-path)]
         (if (result/success? config-result)
           (let [parsed-config-map (:value config-result)
-                global-proserunner-dir (sys/filepath ".proserunner" "")
+                global-proserunner-dir (sys/config-path "")
                 normalized-checks (mapv #(normalize-check-entry global-proserunner-dir %)
                                        (:checks parsed-config-map))
                 {:keys [ignore ignore-issues]} (ignore-file/read)]
@@ -79,7 +79,7 @@
 
    1. Searches for .proserunner/config.edn starting from start-dir (skips home directory)
    2. If found, parses and validates it (parse-manifest)
-   3. Loads global config from ~/.proserunner/ (load-global-config)
+   3. Loads the global config (load-global-config)
    4. Merges global and project configs based on project settings (merge-configs)
    5. Resolves check entries into check definitions (resolve-check-entries)
    6. Builds final configuration with resolved checks (build-project-config)
@@ -108,12 +108,12 @@
   "Determines whether to add checks/ignores to :global or :project scope.
 
    Options map may contain:
-   - :global - Force global scope (~/.proserunner/)
+   - :global - Force global scope (the global config directory)
    - :project - Force project scope (.proserunner/), fails if no project
    - neither - Auto-detect based on presence of .proserunner/ in start-dir
 
    Returns:
-   - :global - Add to ~/.proserunner/
+   - :global - Add to the global config directory
    - :project - Add to .proserunner/ in project root
 
    Throws:

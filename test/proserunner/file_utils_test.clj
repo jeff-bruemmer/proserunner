@@ -229,3 +229,61 @@
           result (file-utils/normalize-path outside-path)]
       (is (= outside-path result)
           "Paths outside cwd should remain absolute"))))
+
+(deftest delete-tree-test
+  (let [base (str (System/getProperty "java.io.tmpdir") File/separator
+                  "proserunner-delete-tree-" (System/nanoTime))
+        tree (io/file base "tree")
+        outside (io/file base "outside")]
+    (try
+      (io/make-parents (io/file tree "a/b/file.txt"))
+      (spit (io/file tree "a/b/file.txt") "x")
+      (io/make-parents (io/file outside "keep.txt"))
+      (spit (io/file outside "keep.txt") "keep")
+      (java.nio.file.Files/createSymbolicLink
+       (.toPath (io/file tree "link"))
+       (.toPath outside)
+       (make-array java.nio.file.attribute.FileAttribute 0))
+
+      (file-utils/delete-tree! tree)
+
+      (testing "deletes the directory and everything in it"
+        (is (not (.exists tree))))
+      (testing "doesn't follow symlinks out of the tree"
+        (is (= "keep" (slurp (io/file outside "keep.txt")))))
+      (testing "missing paths are fine"
+        (is (some? (file-utils/delete-tree! tree))))
+      (finally
+        (file-utils/delete-tree! base)))))
+
+(deftest call-with-lock-test
+  (let [lock (str @test-dir File/separator "sub" File/separator ".lock")
+        counter (io/file @test-dir "counter")]
+    (testing "updates under the lock don't interleave"
+      (spit counter "0")
+      (->> (range 20)
+           (mapv (fn [_]
+                   (future
+                     (file-utils/call-with-lock
+                      lock
+                      #(let [n (parse-long (slurp counter))]
+                         (Thread/sleep 1)
+                         (spit counter (str (inc n))))))))
+           (run! deref))
+      (is (= "20" (slurp counter))))
+
+    (testing "creates the lock file's directory"
+      (is (.exists (io/file lock))))
+
+    (testing "nested calls don't deadlock"
+      (is (= :ok (file-utils/call-with-lock
+                  lock #(file-utils/call-with-lock lock (constantly :ok))))))
+
+    (testing "returns f's value and rethrows its exceptions"
+      (is (= 42 (file-utils/call-with-lock lock (constantly 42))))
+      (is (thrown-with-msg? Exception #"boom"
+                            (file-utils/call-with-lock lock #(throw (Exception. "boom"))))))
+
+    (testing "runs unlocked when the lock file can't be created"
+      (is (= :ran (file-utils/call-with-lock "/proc/proserunner-cannot-write/.lock"
+                                             (constantly :ran)))))))

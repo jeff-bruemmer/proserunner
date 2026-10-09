@@ -42,7 +42,7 @@
 (defn find
   "Walks up the directory tree from start-dir to find .proserunner/config.edn.
    Stops at the first .git directory encountered (project boundary).
-   Skips the home directory (~/.proserunner/ is reserved for global config).
+   Skips the home directory, where ~/.proserunner was the global config before XDG.
    Returns map with :manifest-path and :project-root, or nil if not found."
   [start-dir]
   (let [home-dir (sys/home-dir)]

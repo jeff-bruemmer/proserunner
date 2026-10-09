@@ -5,7 +5,8 @@
   (:require [proserunner.context :as context]
             [proserunner.ignore.core :as core]
             [proserunner.ignore.file :as file]
-            [proserunner.project-config :as project-config]))
+            [proserunner.project-config :as project-config]
+            [proserunner.system :as sys]))
 
 (set! *warn-on-reflection* true)
 
@@ -44,44 +45,32 @@
    Strings go to :ignore, maps go to :ignore-issues.
 
    Options:
-   - :global - Force global scope (~/.proserunner/ignore.edn)
+   - :global - Force global scope (ignore.edn in the global config directory)
    - :project - Force project scope (.proserunner/config.edn)
    - :start-dir - Starting directory for project detection"
-  ([specimen]
-   (let [ignores (file/read)
-         updated (core/add-specimen ignores specimen)]
-     (file/write! updated)))
-  ([specimen options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (if (= target :global)
-         (let [ignores (file/read)
-               updated (core/add-specimen ignores specimen)]
-           (file/write! updated))
-         ;; Add to project
-         (add-ignore-to-project! specimen project-root))))))
+  [specimen options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! (core/add-specimen (file/read) specimen))
+          (add-ignore-to-project! specimen project-root))))))
 
 (defn remove!
   "Removes a specimen from the ignore list with context-aware targeting.
    Removes strings from :ignore, maps from :ignore-issues.
 
    Options:
-   - :global - Force global scope (~/.proserunner/ignore.edn)
+   - :global - Force global scope (ignore.edn in the global config directory)
    - :project - Force project scope (.proserunner/config.edn)
    - :start-dir - Starting directory for project detection"
-  ([specimen]
-   (let [ignores (file/read)
-         updated (core/remove-specimen ignores specimen)]
-     (file/write! updated)))
-  ([specimen options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (if (= target :global)
-         (let [ignores (file/read)
-               updated (core/remove-specimen ignores specimen)]
-           (file/write! updated))
-         ;; Remove from project
-         (remove-ignore-from-project! specimen project-root))))))
+  [specimen options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! (core/remove-specimen (file/read) specimen))
+          (remove-ignore-from-project! specimen project-root))))))
 
 (defn list
   "Returns map with :ignore (set) and :ignore-issues (vector) with context-aware targeting.
@@ -109,16 +98,16 @@
             :ignore-issues (:ignore-issues config)}))))))
 
 (defn clear!
-  "Clears all ignored specimens and issues."
-  ([]
-   (file/write! {:ignore #{} :ignore-issues #{}}))
-  ([options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (if (= target :global)
-         (file/write! {:ignore #{} :ignore-issues #{}})
-         ;; Clear project ignores
-         (let [config (project-config/read project-root)]
-           (project-config/write! project-root (assoc config
-                                                      :ignore #{}
-                                                      :ignore-issues #{}))))))))
+  "Clears all ignored specimens and issues with context-aware targeting.
+   Takes the same options as add!."
+  [options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! {:ignore #{} :ignore-issues #{}})
+          ;; Keep the rest of the project config
+          (let [config (project-config/read project-root)]
+            (project-config/write! project-root (assoc config
+                                                       :ignore #{}
+                                                       :ignore-issues #{}))))))))

@@ -1,6 +1,8 @@
 (ns proserunner.ignore.context-test
   (:require [clojure.test :refer [deftest is testing]]
-            [proserunner.ignore.context :as context]))
+            [proserunner.ignore.context :as context]
+            [proserunner.ignore.file :as ignore-file]
+            [proserunner.test-helpers :refer [with-temp-dir with-user-home]]))
 
 ;; These are integration tests that test the context-aware ignore operations
 ;; In a real implementation, we'd want to mock the file system or use temp directories
@@ -55,3 +57,16 @@
   (testing "respects :project option"
     ;; Document that :project option forces project scope
     (is (= :project :project))))
+
+(deftest concurrent-adds-keep-every-ignore-test
+  (testing "read-modify-write updates hold the config lock, so none is lost"
+    (with-temp-dir [home "proserunner-concurrent-ignores"]
+      (with-user-home home
+        (->> (range 30)
+             (mapv #(future (context/add! (str "word" %) {:global true})))
+             (run! deref))
+        (is (= 30 (count (:ignore (ignore-file/read)))))
+        (->> (range 0 30 2)
+             (mapv #(future (context/remove! (str "word" %) {:global true})))
+             (run! deref))
+        (is (= 15 (count (:ignore (ignore-file/read)))))))))

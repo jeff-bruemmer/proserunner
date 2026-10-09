@@ -3,7 +3,8 @@
 
   Provides shared functionality for test fixtures, temp directories,
   and output suppression."
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [proserunner.system :as sys])
   (:import java.io.File))
 
 ;;; Output Suppression
@@ -94,6 +95,21 @@
   [prefix]
   (let [dir (io/file (temp-dir-path prefix))]
     (.mkdirs dir)
+    dir))
+
+;;; Isolation
+
+(defonce ^{:doc "A throwaway home directory for the whole test run.
+
+  Loading this namespace points user.home at it and hides $XDG_CONFIG_HOME,
+  so no test can read, write, or migrate the real ~/.proserunner or
+  ~/.config/proserunner. The :test alias in deps.edn loads this namespace
+  before any test namespace."}
+  test-home
+  (let [dir (create-temp-dir! "proserunner-test-home")]
+    (System/setProperty "user.home" (.getAbsolutePath dir))
+    (alter-var-root #'sys/xdg-config-home (constantly (constantly nil)))
+    (.addShutdownHook (Runtime/getRuntime) (Thread. #(delete-recursively dir)))
     dir))
 
 ;;; Test Fixtures

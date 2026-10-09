@@ -2,103 +2,135 @@
   "Main entry point for Proserunner CLI. Parses command-line arguments and dispatches to command handlers."
   (:gen-class)
   (:require [proserunner
+             [cli :as cli]
              [commands :as cmd]
              [config :as conf]
+             [console :as console]
              [effects :as effects]
              [error :as error]
-             [fmt :as fmt]
              [output :as output]
              [result :as result]
-             [text :as text]]
-            [clojure.string :as str]
-            [clojure.tools.cli :as cli]))
+             [text :as text]]))
 
 (set! *warn-on-reflection* true)
 
-(def options
-  "CLI option configuration. See:
-  https://github.com/clojure/tools.cli"
-  [["-b" "--code-blocks" "Include code blocks when checking. Default: skip them." :default false]
-   ["-C" "--checks" "List all enabled checks with their types and descriptions."]
-   ["-c" "--config CONFIG" "Use specific config file, overriding global and project configs." :default nil]
-   ["-d" "--cache-dir DIR" "Cache directory location. Priority: CLI > $PROSERUNNER_CACHE_DIR > $XDG_CACHE_HOME/proserunner > $TMPDIR/proserunner-storage"
-    :default nil
-    :validate [(fn [s] (and s (not (str/blank? s))))
-               "Cache directory cannot be empty"]]
-   ["-q" "--quoted-text" "Include quoted text when checking. Default: skip it." :default false]
-   ["-e" "--exclude PATTERN" "Exclude files/dirs matching glob pattern. Can be used multiple times or comma-separated. Example: --exclude \"*.log,temp/**\""
-    :default []
-    :assoc-fn (fn [m k v]
-                (let [patterns (if (re-find #"," v)
-                                 (str/split v #",\s*")
-                                 [v])]
-                  (update m k (fnil into []) patterns)))]
-   ["-f" "--file FILE" "File or directory to check. Directories processed recursively."
-    :default nil
-    :validate [text/file-exists? text/file-error-msg
-               text/less-than-10-MB? text/file-size-msg]]
-   ["-h" "--help" "Show this help."]
-   ["-i" "--ignore IGNORE" "Ignore file name (default: 'ignore')." :default "ignore"]
-   ["-n" "--no-cache" "Skip cache, force re-processing." :default false]
-   ["-s" "--skip-ignore" "Skip all ignore lists for this run." :default false]
-   ["-o" "--output FORMAT" "Output format: 'group' (default), 'edn', 'json', 'table', 'verbose'."
-    :default "group"]
-   ["-p" "--parallel-files" "Process files concurrently."
-    :default false]
-   ["-S" "--sequential-lines" "Process lines sequentially (for debugging)."
-    :default false]
-   ["-t" "--timer" "Print elapsed time." :default false]
-   ["-v" "--version" "Show version."]
-   ["-A" "--add-ignore SPECIMEN" "Add specimen to ignore list (applies everywhere)."]
-   ["-R" "--remove-ignore SPECIMEN" "Remove specimen from ignore list."]
-   ["-L" "--list-ignored" "List all ignored specimens."]
-   ["-X" "--clear-ignored" "Clear all ignored specimens. Use with caution."]
-   ["-Z" "--ignore-all" "Ignore all current findings (creates contextual ignores)."]
-   ["-J" "--ignore-issues NUMBERS" "Ignore issues by number. Supports ranges: 1,3,5-7. Requires --file."]
-   ["-U" "--audit-ignores" "Find stale ignores."]
-   ["-W" "--clean-ignores" "Remove stale ignores."]
-   ["-D" "--restore-defaults" "Download fresh default checks from GitHub."]
-   ["-a" "--add-checks SOURCE" "Import checks from directory."]
-   ["-N" "--name NAME" "Custom name for imported checks (use with --add-checks)."]
-   ["-G" "--global" "Apply to global config (~/.proserunner/)."]
-   ["-P" "--project" "Apply to project config (.proserunner/)."]
-   ["-I" "--init-project" "Create .proserunner/ with default config."]])
+(def exit-codes
+  "Exit statuses: no issues, issues found, and errors (bad input, failed runs)."
+  {:ok 0 :issues 1 :error 2})
+
+(defn- path-errors
+  "Validates positional paths the way --file is validated. A missing first
+  path that looks like a mistyped command gets a suggestion."
+  [paths]
+  (for [[i p] (map-indexed vector paths)
+        :when (not (text/stdin? p))
+        :let [problem (cond
+                        (not (text/file-exists? p))
+                        (str "no such file or directory."
+                             (when-let [c (and (zero? i) (error/suggest-option p cli/commands))]
+                               (str " Did you mean the '" c "' command?")))
+                        (not (text/less-than-10-MB? p)) text/file-size-msg)]
+        :when problem]
+    (str p ": " problem)))
+
+(defn- command-shadows-path
+  "When the command word also names a file or directory here, says how to
+  check that path instead."
+  [command-word]
+  (when (and command-word (.exists (java.io.File. ^String command-word)))
+    (str "Running the '" command-word "' command. To check the path named "
+         command-word ", use ./" command-word)))
+
+(defn- needs-global-config?
+  "Help and version shouldn't create the global config directory."
+  [command]
+  (not (#{:help :version :default} command)))
+
+(defn- run-command
+  "Validates, dispatches, and executes the command. Returns an exit code."
+  [opts]
+  (let [validation-result (cmd/validate-options opts)]
+    (if (result/failure? validation-result)
+      (do (error/message [(:error validation-result)])
+          (:error exit-codes))
+      (do
+        (when (needs-global-config? (cmd/determine-command opts))
+          (conf/ensure-global-config!))
+        ;; Resolve the default config only now: ensure-global-config! may
+        ;; have just moved ~/.proserunner to the XDG config directory
+        (let [opts (conf/default opts)
+              command-result (cmd/dispatch-command opts)
+              ;; Failures are printed by execute-command-result
+              effect-result (effects/execute-command-result command-result)]
+          (cond
+            (result/failure? effect-result) (:error exit-codes)
+            (pos? (or (-> effect-result :value last :issue-count) 0)) (:issues exit-codes)
+            :else (:ok exit-codes)))))))
+
+(defn- report-exception
+  "Prints an exception for people. Stack traces only with PROSERUNNER_DEBUG."
+  [^Throwable e expected?]
+  (if expected?
+    (console/error (.getMessage e))
+    (do (console/error "unexpected error: " (or (.getMessage e) (.getName (class e))))
+        (console/warn "Set PROSERUNNER_DEBUG=1 to see details, and please report it: "
+                      console/issues-url)))
+  (when (console/debug?)
+    (.printStackTrace e)))
 
 (defn reception
   "Parses command line `args` and applies the relevant function.
-
-  Now uses pure command handlers and effect execution for better testability."
+  Returns the expanded options, with :exit-code set."
   [args]
-  (conf/ensure-global-config!)
-  (let [opts (cli/parse-opts args options :summary-fn fmt/summary)
-        {:keys [options errors]} opts
-        expanded-options (conf/default (merge opts options))]
-    (if (seq errors)
-      (error/inferior-input errors)
-      ;; Validate options, dispatch command, execute effects
-      (let [validation-result (cmd/validate-options expanded-options)]
-        (if (result/failure? validation-result)
-          ;; Validation failed - print error and exit
-          (error/inferior-input [(:error validation-result)])
-          ;; Valid options - dispatch and execute
-          (let [command-result (cmd/dispatch-command expanded-options)
-                effect-result (effects/execute-command-result command-result)]
-            ;; Return options for follow-up activity (like printing time)
-            ;; Use result-or-exit to handle failures consistently
-            (result/result-or-exit effect-result 1)
-            expanded-options))))))
+  (let [{:keys [options summary errors warnings command-word]} (cli/parse args)
+        ;; Lazy, so the file checks run once, inside the try below
+        path-errs (path-errors (:paths options))
+        expanded-options (assoc options
+                                :summary summary
+                                :explicit-config? (some? (:config options)))]
+    (binding [console/*quiet* (boolean (:quiet options))]
+      (assoc expanded-options :exit-code
+             (try
+               (cond
+                 ;; -h works anywhere, regardless of other flags or errors
+                 (:help options)
+                 (do (effects/execute-command-result (cmd/dispatch-command (conf/default expanded-options)))
+                     (:ok exit-codes))
+
+                 (seq errors)
+                 (do (error/message (error/describe errors cli/long-opts))
+                     (:error exit-codes))
+
+                 (seq path-errs)
+                 (do (error/message path-errs)
+                     (:error exit-codes))
+
+                 :else
+                 (do (doseq [w warnings] (console/warn w))
+                     (some-> (command-shadows-path command-word) console/status)
+                     (run-command expanded-options)))
+               (catch clojure.lang.ExceptionInfo e
+                 (report-exception e true)
+                 (:error exit-codes))
+               (catch Exception e
+                 (report-exception e false)
+                 (:error exit-codes)))))))
 
 (defn run
-  "For development; same as main, except `run` doesn't shutdown agents."
+  "For development; same as main, except `run` returns the exit code
+  instead of exiting, and doesn't shut down agents."
   [& args]
   (let [start-time (System/currentTimeMillis)
         options (assoc (reception args) :start-time start-time)]
-    (output/time-elapsed options)))
+    (output/time-elapsed options)
+    (:exit-code options)))
 
 (defn -main
-  "Sends args to reception for dispatch, then shuts down agents and prints the time."
+  "Sends args to reception for dispatch, prints the time, shuts down agents,
+  and exits with the command's exit code."
   [& args]
   (let [start-time (System/currentTimeMillis)
         options (assoc (reception args) :start-time start-time)]
+    (output/time-elapsed options)
     (shutdown-agents)
-    (output/time-elapsed options)))
+    (result/*exit-fn* (:exit-code options))))

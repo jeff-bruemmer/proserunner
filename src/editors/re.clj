@@ -1,7 +1,8 @@
 (ns editors.re
   "Applies regex pattern-based checks to text."
   (:require
-   [editors.utilities :as util])
+   [editors.utilities :as util]
+   [proserunner.console :as console])
   (:gen-class))
 
 ;; Pattern compilation without caching for optimal parallel performance.
@@ -13,7 +14,7 @@
   (try
     (re-pattern re)
     (catch java.util.regex.PatternSyntaxException e
-      (println (str "Warning: Invalid regex pattern '" re "': " (.getMessage e)))
+      (console/warn "Invalid regex pattern '" re "': " (.getMessage e))
       nil)))
 
 (defn handle-specimen

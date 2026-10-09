@@ -16,7 +16,8 @@
     com.cognitect/test-runner
     {:git/url "https://github.com/cognitect-labs/test-runner.git",
      :sha "209b64504cb3bd3b99ecfec7937b358a879f55c1"}},
-   :main-opts ["-m" "cognitect.test-runner"]},
+   ;; test-helpers first: it moves user.home somewhere safe for the run
+   :main-opts ["-e" "(require 'proserunner.test-helpers)" "-m" "cognitect.test-runner"]},
   :benchmark
   {:extra-paths ["."]
    :main-opts ["-m" "benchmarks.runner"]},

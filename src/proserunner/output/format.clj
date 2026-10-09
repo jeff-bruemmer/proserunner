@@ -1,5 +1,5 @@
 (ns proserunner.output.format
-  "Formatters for grouped, table, and verbose output."
+  "Formatters for grouped, plain, table, and verbose output."
   (:gen-class)
   (:require [clojure.set :refer [rename-keys]]
             [clojure.string :as string]
@@ -24,6 +24,15 @@
         (println (:file (second first-item)))
         (doseq [[num issue] file-group]
           (println (prep/issue-str num issue widths)))))))
+
+;;; Plain output format
+
+(defn plain-numbered
+  "Prints one issue per line, prefixed with path:line:col: (the format grep,
+  vim's errorformat, and Emacs compile-mode understand), then the issue number."
+  [results]
+  (doseq [[idx {:keys [file line-num col-num specimen message]}] (map-indexed vector results)]
+    (println (str file ":" line-num ":" col-num ": [" (inc idx) "] \"" specimen "\" -> " message))))
 
 ;;; Formatters for command output
 
@@ -128,20 +137,25 @@
 
 ;;; Table output with issue numbers
 
+(def ^:private table-columns
+  "Issue keys and their headings, in display order."
+  [[:issue-num "#"]
+   [:file "File"]
+   [:line-num "Line"]
+   [:col-num "Col"]
+   [:specimen "Specimen"]
+   [:message "Message"]
+   [:name "Name"]
+   [:kind "Kind"]])
+
 (defn table-numbered
   "Takes results and prints them as a table with issue numbers."
   [results]
   (->> results
        (map-indexed (fn [idx issue]
                       (assoc issue :issue-num (inc idx))))
-       (map (make-key-printer {:issue-num "#"
-                               :file "File"
-                               :line-num "Line"
-                               :col-num "Col"
-                               :specimen "Specimen"
-                               :name "Name"
-                               :message "Message"}))
-       (print-table)))
+       (map (make-key-printer (into {} table-columns)))
+       (print-table (map second table-columns))))
 
 ;;; Verbose output format
 

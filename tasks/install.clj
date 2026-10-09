@@ -50,21 +50,26 @@
     ""))
 
 (defn add-path-to-config!
-  "Appends PATH export to config file with a comment."
+  "Appends PATH export to config file with a dated comment, so it's easy to
+  find and remove later."
   [config-file]
   (spit config-file
-        (str "\n# Added by proserunner installer\n"
+        (str "\n# Added by proserunner installer on " (java.time.LocalDate/now) "\n"
              (path-export-line) "\n")
         :append true))
 
 (defn prompt-yes-no
-  "Prompts user with a yes/no question. Returns true if yes, false otherwise."
+  "Prompts user with a yes/no question. Returns true if yes, false otherwise.
+  Pressing Enter means yes; end of input (no one to answer, e.g. in a script)
+  means no, so shell configs are never edited unattended."
   [message]
   (print (str message " [Y/n] "))
   (flush)
-  (let [response (or (read-line) "y")
-        response (str/lower-case (str/trim response))]
-    (or (empty? response) (= response "y") (= response "yes"))))
+  (if-let [response (read-line)]
+    (let [response (str/lower-case (str/trim response))]
+      (or (empty? response) (= response "y") (= response "yes")))
+    (do (println)
+        false)))
 
 (defn setup-path!
   "Prompts user to add PATH to shell config if needed.

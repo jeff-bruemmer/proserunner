@@ -1,13 +1,14 @@
 (ns proserunner.ignore.file-test
   (:require [clojure.test :refer [deftest is testing]]
             [proserunner.ignore.file :as file]
+            [proserunner.system]
             [clojure.java.io :as io]))
 
 (deftest path-test
-  (testing "returns path to ignore file in .proserunner directory"
+  (testing "returns path to ignore file in the global config directory"
     (let [path (file/path)]
       (is (string? path))
-      (is (re-find #"\.proserunner" path))
+      (is (= (proserunner.system/config-path "ignore.edn") path))
       (is (re-find #"ignore\.edn" path)))))
 
 (deftest read-ignore-file-test

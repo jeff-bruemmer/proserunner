@@ -2,15 +2,17 @@
   "Issue preparation and sorting."
   (:gen-class)
   (:require [clojure.string :as string]
+            [proserunner.console :as console]
             [proserunner.fmt :as fmt]))
 
 (set! *warn-on-reflection* true)
 
 (defn time-elapsed
-  "Prints elapsed time if timer is enabled."
+  "Prints elapsed time to stderr if timer is enabled, so it never mixes
+  into piped output."
   [{:keys [timer start-time]}]
   (let [end-time (System/currentTimeMillis)]
-    (when timer (println "Completed in" (- end-time start-time) "ms."))))
+    (when timer (console/warn "Completed in " (- end-time start-time) " ms."))))
 
 (defn prep
   "Prepares results for printing by merging line data with each issue."

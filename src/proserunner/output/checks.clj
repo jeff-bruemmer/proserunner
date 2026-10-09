@@ -5,6 +5,7 @@
   (:require [clojure.string :as string]
             [proserunner.checks :as checks]
             [proserunner.config :as conf]
+            [proserunner.console :as console]
             [proserunner.fmt :as fmt]
             [proserunner.output.format :as format]
             [proserunner.result :as result]
@@ -13,14 +14,16 @@
 (set! *warn-on-reflection* true)
 
 (defn print
-  "Prints a table of the enabled checks: names, kind, and description."
+  "Prints a table of the enabled checks: names, kind, and description.
+  Returns Success, or a Failure when no checks could be loaded, so the
+  run exits with the error status."
   [config]
-  (println "Enabled checks:")
   (let [config-data (conf/fetch-or-create! config)
         check-dir (sys/check-dir config)
         checks-result (checks/create {:config config-data :check-dir check-dir})]
     (if (result/success? checks-result)
       (let [{:keys [checks warnings]} (:value checks-result)]
+        (println "Enabled checks:")
         (->> checks
              (map (fn [{:keys [name kind explanation]}]
                     {:name (string/capitalize name)
@@ -31,7 +34,8 @@
              (format/print-table))
         (when (seq warnings)
           (let [failed-count (count warnings)]
-            (println (str "\nWarning: " failed-count " check(s) failed to load and will be skipped."))
+            (console/warn failed-count " check(s) failed to load and will be skipped:")
             (doseq [{:keys [path error]} warnings]
-              (println (str "  - " path ": " error))))))
-      (println "Error loading checks:" (:error checks-result)))))
+              (console/warn "  - " path ": " error))))
+        (result/ok nil))
+      (result/map-err checks-result #(str "couldn't load checks: " %)))))

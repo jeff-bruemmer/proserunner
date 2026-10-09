@@ -2,8 +2,11 @@
   "File utility functions for safe file operations."
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
+            [proserunner.console :as console]
             [proserunner.result :as result])
   (:gen-class))
+
+(set! *warn-on-reflection* true)
 
 (defn absolute-path?
   "Check if a path is absolute."
@@ -52,6 +55,49 @@
         ;; Always rethrow original exception
         (throw e)))))
 
+(def ^:private lock-monitor
+  "Serializes locking within this process: a second FileChannel lock on the
+  same file from one JVM throws instead of waiting."
+  (Object.))
+
+(def ^:private ^:dynamic *locked?*
+  "True while this thread holds the file lock, so nested calls don't relock."
+  false)
+
+(defn- open-lock-channel
+  "Opens `lock-path` for locking, creating it, or returns nil if it can't."
+  ^java.nio.channels.FileChannel [lock-path]
+  (try
+    (.mkdirs (.getParentFile (.getAbsoluteFile (io/file lock-path))))
+    (java.nio.channels.FileChannel/open
+     (.toPath (io/file lock-path))
+     (into-array java.nio.file.OpenOption
+                 [java.nio.file.StandardOpenOption/CREATE
+                  java.nio.file.StandardOpenOption/WRITE]))
+    (catch java.io.IOException _ nil)))
+
+(defn call-with-lock
+  "Calls f while holding an exclusive lock on the file at `lock-path`, so
+  read-modify-write updates from concurrent runs don't lose each other's
+  changes. Waits for another process holding it, saying so. Reentrant.
+
+  atomic-spit already keeps each write whole; this keeps the read and the
+  write together. If the lock file can't be created (say, a read-only home),
+  f runs unlocked rather than failing. Closing the channel releases the
+  lock, and the OS releases it if the process dies."
+  [lock-path f]
+  (if *locked?*
+    (f)
+    (locking lock-monitor
+      (if-let [ch (open-lock-channel lock-path)]
+        (with-open [ch ch]
+          (when-not (.tryLock ch)
+            (console/status "Waiting for another proserunner to finish...")
+            (.lock ch))
+          (binding [*locked?* true]
+            (f)))
+        (f)))))
+
 (defn ensure-parent-dir
   "Ensures that the parent directory of the given filepath exists.
   Creates all necessary parent directories if they don't exist.
@@ -89,6 +135,17 @@
     ;; Creates the entire directory structure"
   [dirpath]
   (.mkdirs (io/file dirpath)))
+
+(defn delete-tree!
+  "Deletes a file, or a directory and everything in it. Doesn't follow
+  symlinks, so it never deletes outside `path`. Missing paths are fine."
+  [path]
+  (let [f (io/file path)]
+    (when (and (.isDirectory f)
+               (not (java.nio.file.Files/isSymbolicLink (.toPath f))))
+      (doseq [child (.listFiles f)]
+        (delete-tree! child)))
+    (.delete f)))
 
 (defn normalize-path
   "Normalizes a file path to be relative to the current working directory.

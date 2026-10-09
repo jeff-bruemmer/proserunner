@@ -16,7 +16,7 @@
 (defn path
   "Returns the path to the ignore file."
   []
-  (sys/filepath ".proserunner" "ignore.edn"))
+  (sys/config-path "ignore.edn"))
 
 (defn read
   "Reads the ignore file and returns a map with :ignore (set) and :ignore-issues (set).

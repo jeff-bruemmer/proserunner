@@ -14,7 +14,7 @@
    commands, effects, and file operations.
 
    Options:
-   - :global - Force global scope (~/.proserunner/)
+   - :global - Force global scope (the global config directory)
    - :project - Force project scope (.proserunner/)
    - :start-dir - Starting directory for project detection
    - :include-project-root - Include :project-root in result (default true if :project)
@@ -60,7 +60,7 @@
   "Determines operation context and executes function with context map.
 
    Provides unified context resolution for operations that can target
-   either global (~/.proserunner/) or project (.proserunner/) scope.
+   either global (the global config directory) or project (.proserunner/) scope.
 
    The function f receives a map with:
    - :target - either :global or :project
@@ -68,7 +68,7 @@
    - :project-root - project root directory (only when :target is :project)
 
    Options:
-   - :global - Force global scope (~/.proserunner/)
+   - :global - Force global scope (the global config directory)
    - :project - Force project scope (.proserunner/)
    - :start-dir - Starting directory for project detection
 

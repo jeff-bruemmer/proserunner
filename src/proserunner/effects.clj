@@ -9,12 +9,13 @@
   (:require [proserunner
              [commands :as cmd]
              [config :as conf]
+             [console :as console]
              [custom-checks :as custom]
              [process :as process]
              [project-config :as project-conf]
              [result :as result]
              [scope :as scope]
-             [version :as ver]
+             [system :as sys]
              [vet :as vet]]
             [proserunner.ignore.audit :as ignore-audit]
             [proserunner.ignore.context :as ignore-context]
@@ -62,7 +63,7 @@
   "Runs vetting and returns flat list of prepped issues.
    Returns Result with vector of issues or propagates vet failure."
   [opts]
-  (let [vet-result (vet/compute-or-cached opts)]
+  (let [vet-result (vet/compute-paths opts)]
     (if (result/failure? vet-result)
       vet-result
       (let [payload (:value vet-result)
@@ -110,10 +111,10 @@
       #(update % :ignore conj \"new-pattern\")
       {:project false})"
   [update-fn opts]
-  (let [current-ignores (read-ignores-by-scope opts)
-        updated-ignores (update-fn current-ignores)]
-    (write-ignores-by-scope! updated-ignores opts)
-    updated-ignores))
+  (sys/call-with-config-lock
+   #(let [updated-ignores (update-fn (read-ignores-by-scope opts))]
+      (write-ignores-by-scope! updated-ignores opts)
+      updated-ignores)))
 
 
 (defn- extract-prepped-issues
@@ -182,12 +183,35 @@
    :ignore/list
    {}))
 
+(def clear-without-force-warning
+  (str "In a future release, 'ignore clear' will need --force when not run in a terminal. "
+       "Add --force now to keep this working."))
+
 (defmethod execute-effect :ignore/clear
   [[_ opts]]
   (effect-wrapper
-   #(do
-      (ignore-context/clear! opts)
-      (scope/get-target-info opts))
+   #(let [{:keys [msg-context] :as target-info} (scope/get-target-info opts)
+          {:keys [ignore ignore-issues]} (read-ignores-by-scope opts)
+          n (+ (count ignore) (count ignore-issues))
+          ask? (and (not (:force opts)) (console/interactive?))]
+      ;; Scripts clear without asking today; warn them before that changes
+      (when-not (or ask? (:force opts))
+        (console/warn clear-without-force-warning))
+      (cond
+        (zero? n)
+        (do (console/status (format "The %s ignore list is already empty." msg-context))
+            (assoc target-info :cleared 0))
+
+        (and ask?
+             (not (console/confirm? (format "Clear %d ignore(s) from the %s ignore list?"
+                                            n msg-context))))
+        (do (console/status "Nothing cleared.")
+            (assoc target-info :cleared 0 :cancelled true))
+
+        :else
+        (do (ignore-context/clear! opts)
+            (console/status (format "Cleared %d ignore(s) from the %s ignore list." n msg-context))
+            (assoc target-info :cleared n))))
    :ignore/clear
    {}))
 
@@ -206,9 +230,9 @@
                             #(into (or % #{}) ignore-entries)))
                   opts)
                {:keys [msg-context] :as target-info} (scope/get-target-info opts)]
-           (println (format "Added %d contextual ignore(s) to %s ignore list."
-                           (count ignore-entries)
-                           msg-context))
+           (console/status (format "Added %d contextual ignore(s) to %s ignore list."
+                                   (count ignore-entries)
+                                   msg-context))
            (merge {:count (count ignore-entries)} target-info)))))
    :ignore/add-all
    {}))
@@ -217,7 +241,7 @@
   [[_ issue-nums opts]]
   (effect-wrapper
    (fn []
-     (let [vet-result (vet/compute-or-cached opts)]
+     (let [vet-result (vet/compute-paths opts)]
        (if (result/failure? vet-result)
          vet-result
          (let [payload (:value vet-result)
@@ -234,15 +258,15 @@
                {:keys [msg-context] :as target-info} (scope/get-target-info opts)]
            ;; Provide feedback
            (when (seq invalid-nums)
-             (println (format "Warning: Issue numbers out of range (1-%d): %s"
-                             total-issues
-                             (str/join ", " invalid-nums))))
+             (console/warn (format "Issue numbers out of range (1-%d): %s"
+                                   total-issues
+                                   (str/join ", " invalid-nums))))
            (if (empty? selected-issues)
-             (println "No valid issue numbers provided. Nothing was ignored.")
-             (println (format "Added %d contextual ignore(s) for issues %s to %s ignore list."
-                             (count ignore-entries)
-                             (str/join ", " (filter valid-nums issue-nums))
-                             msg-context)))
+             (console/warn "No valid issue numbers provided. Nothing was ignored.")
+             (console/status (format "Added %d contextual ignore(s) for issues %s to %s ignore list."
+                                     (count ignore-entries)
+                                     (str/join ", " (filter valid-nums issue-nums))
+                                     msg-context)))
            (merge {:count (count ignore-entries)
                    :issues issue-nums
                    :selected (count selected-issues)
@@ -265,16 +289,17 @@
 (defmethod execute-effect :ignore/clean
   [[_ opts]]
   (effect-wrapper
-   #(let [ignores (read-ignores-by-scope opts)
-          cleaned-ignores (ignore-audit/remove-stale ignores)
-          removed-count (- (count (:ignore-issues ignores))
-                           (count (:ignore-issues cleaned-ignores)))
+   #(let [removed-count (sys/call-with-config-lock
+                         (fn []
+                           (let [ignores (read-ignores-by-scope opts)
+                                 cleaned-ignores (ignore-audit/remove-stale ignores)]
+                             (write-ignores-by-scope! cleaned-ignores opts)
+                             (- (count (:ignore-issues ignores))
+                                (count (:ignore-issues cleaned-ignores))))))
           {:keys [msg-context] :as target-info} (scope/get-target-info opts)]
-      ;; Write cleaned ignores
-      (write-ignores-by-scope! cleaned-ignores opts)
-      (println (format "Removed %d stale ignore(s) from %s ignore list."
-                      removed-count
-                      msg-context))
+      (console/status (format "Removed %d stale ignore(s) from %s ignore list."
+                              removed-count
+                              msg-context))
       (merge {:removed removed-count} target-info))
    :ignore/clean
    {}))
@@ -310,9 +335,7 @@
 (defmethod execute-effect :checks/print
   [[_ config]]
   (effect-wrapper
-   #(do
-      (output-checks/print config)
-      {:config config})
+   #(result/fmap (output-checks/print config) (constantly {:config config}))
    :checks/print
    {}))
 
@@ -326,16 +349,19 @@
 
 ;; Help and version effects
 (defmethod execute-effect :help/print
-  [[_ opts & [title]]]
+  [[_ opts]]
   (result/ok
-   (if title
-     (output-usage/print opts title)
-     (output-usage/print opts))))
+   (output-usage/print opts)))
+
+(defmethod execute-effect :help/print-concise
+  [[_ _opts]]
+  (result/ok
+   (output-usage/print-concise)))
 
 (defmethod execute-effect :version/print
   [[_]]
   (result/ok
-   (println "Proserunner version: " ver/number)))
+   (output-usage/version)))
 
 ;; Default handler for unknown effects
 (defmethod execute-effect :default
@@ -373,25 +399,30 @@
 (defn execute-command-result
   "Executes a command result from proserunner.commands/dispatch-command.
 
-  Takes command result map with :effects, :messages, :format-fn, :error
-  Executes effects and prints messages or formatted output.
+  Takes command result map with :effects, :warnings, :progress, :messages,
+  :format-fn, and :error. Warnings and progress print to stderr before the
+  effects run; messages (confirmations) print to stderr after they succeed;
+  format-fn output is the command's primary output and goes to stdout.
 
-  Returns the last effect result (or nil if no effects).
-  If :error is present in command result, returns failure immediately."
-  [{:keys [effects messages format-fn error] :as _cmd-result}]
+  Returns the effect results (or Success nil if no effects).
+  If :error is present in command result, prints it and returns failure."
+  [{:keys [effects warnings progress messages format-fn error] :as _cmd-result}]
   (if error
     ;; Command returned an error - return failure immediately
-    (result/err error)
+    (let [failure (result/err error)]
+      (result/print-failure failure)
+      failure)
     ;; No error - proceed with effects
-    (let [effect-result (if (seq effects)
+    (let [_ (doseq [w warnings] (console/warn w))
+          _ (doseq [p progress] (console/status p))
+          effect-result (if (seq effects)
                           (execute-effects effects)
                           (result/ok nil))]
       (if (result/success? effect-result)
         (do
-          ;; Print messages if provided
-          (when (seq messages)
-            (doseq [msg messages]
-              (println msg)))
+          ;; Print confirmations if provided
+          (doseq [msg (remove nil? messages)]
+            (console/status msg))
           ;; Or use format-fn if provided
           (when (and format-fn (seq (:value effect-result)))
             (doseq [msg (format-fn (last (:value effect-result)))]

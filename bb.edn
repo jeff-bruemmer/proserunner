@@ -10,12 +10,13 @@
           (load-file "tasks/build.clj")
           (load-file "tasks/baseline.clj")
           (load-file "tasks/install.clj")
+          (load-file "tasks/pin_checks.clj")
           (alias 'build 'tasks.build)
           (alias 'base 'tasks.baseline)
           (alias 'install-helper 'tasks.install))
 
   ;; Main proserunner task (named 'lint' to avoid conflict with proserunner file)
-  lint {:doc "Run proserunner via babashka (no build needed): bb lint --file <file-or-dir>"
+  lint {:doc "Run proserunner via babashka (no build needed): bb lint <file-or-dir>"
         :requires ([proserunner.core :as core])
         :task (apply core/-main cli-args)}
 
@@ -39,6 +40,9 @@
 
   benchmark-build {:doc "Benchmark current native binary performance"
                    :task (build/benchmark-build)}
+
+  pin-checks {:doc "Print the default-checks pin for config.clj: bb pin-checks [REF] (default: main)"
+              :task (apply tasks.pin-checks/pin-checks cli-args)}
 
   ;; Installation tasks
   install {:doc "Build native binary and install to ~/.local/bin"

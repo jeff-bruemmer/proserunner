@@ -1,7 +1,8 @@
 (ns proserunner.custom-checks
   "Functions for adding custom checks from external sources."
   (:gen-class)
-  (:require [proserunner.context :as context]
+  (:require [proserunner.console :as console]
+            [proserunner.context :as context]
             [proserunner.edn-utils :as edn-utils]
             [proserunner.project-config :as project-config]
             [proserunner.config.manifest :as manifest]
@@ -83,7 +84,7 @@
 (defn- add-checks-from-directory
   "Copy .edn files from a local directory to global custom checks directory."
   [source-dir target-name]
-  (let [target-dir (sys/filepath ".proserunner" "custom" target-name)]
+  (let [target-dir (sys/config-path "custom" target-name)]
     (copy-checks-to-directory source-dir target-dir)))
 
 (defn- add-checks-to-project-dir
@@ -95,7 +96,7 @@
 (defn- read-config
   "Read the config.edn file."
   []
-  (let [config-path (sys/filepath ".proserunner" "config.edn")]
+  (let [config-path (sys/config-path "config.edn")]
     (when (.exists (io/file config-path))
       (let [result (edn-utils/read-edn-file config-path)]
         (when (result/success? result)
@@ -104,7 +105,7 @@
 (defn- write-config!
   "Write config map to config.edn file atomically."
   [config]
-  (let [config-path (sys/filepath ".proserunner" "config.edn")]
+  (let [config-path (sys/config-path "config.edn")]
     (file-utils/atomic-spit config-path (with-out-str (pprint/pprint config)))))
 
 (defn- update-config-with-checks!
@@ -148,7 +149,7 @@
   "Import checks from local directory.
    Returns result map with :target-dir, :check-names, and :count."
   [source target-name project-root]
-  (println (str "Importing from " source "..."))
+  (console/status "Importing from " source "...")
   (if project-root
     (add-checks-to-project-dir source target-name project-root)
     (add-checks-from-directory source target-name)))
@@ -162,36 +163,37 @@
         extra-msg (if (= target :project)
                    "\nThese checks will apply to this project only."
                    "")]
-    (println (str "\nAdded " (:count result) " checks to " scope-name))
-    (println (str "  + " (:target-dir result)))
-    (println (str "  + Updated config: " config-path))
-    (println (str "\nChecks added: " (string/join ", " (:check-names result))))
-    (println extra-msg)
-    (println (str "Use " alt-flag " to add to " alt-scope " instead."))))
+    (console/status "\nAdded " (:count result) " checks to " scope-name)
+    (console/status "  + " (:target-dir result))
+    (console/status "  + Updated config: " config-path)
+    (console/status "\nChecks added: " (string/join ", " (:check-names result)))
+    (console/status extra-msg)
+    (console/status "Use " alt-flag " to add to " alt-scope " instead.")))
 
 (defn add-checks
   "Add checks from a local directory with context-aware targeting.
 
    Options:
    - :name - Custom name for the check directory (optional, defaults to source basename)
-   - :global - Force global scope (~/.proserunner/custom/)
+   - :global - Force global scope (custom/ in the global config directory)
    - :project - Force project scope (.proserunner/checks/), fails if no project
    - :start-dir - Starting directory for project detection (defaults to user.dir)"
   [source options]
   (let [target-name (or (:name options) (extract-name-from-source source))]
     (context/with-context options
       (fn [{:keys [target project-root]}]
-        (if (= target :global)
-          ;; Global scope
-          (let [result (import-from-source source target-name nil)
-                config-path (sys/filepath ".proserunner" "config.edn")]
-            (update-config-with-checks! target-name (:check-names result))
-            (print-success-message target result config-path)
-            (assoc result :target :global))
+        (sys/call-with-config-lock
+         #(if (= target :global)
+            ;; Global scope
+            (let [result (import-from-source source target-name nil)
+                  config-path (sys/config-path "config.edn")]
+              (update-config-with-checks! target-name (:check-names result))
+              (print-success-message target result config-path)
+              (assoc result :target :global))
 
-          ;; Project scope
-          (let [result (import-from-source source target-name project-root)
-                config-path (manifest/project-config-path project-root)]
-            (update-project-config-with-checks! project-root)
-            (print-success-message target result config-path)
-            (assoc result :target :project)))))))
+            ;; Project scope
+            (let [result (import-from-source source target-name project-root)
+                  config-path (manifest/project-config-path project-root)]
+              (update-project-config-with-checks! project-root)
+              (print-success-message target result config-path)
+              (assoc result :target :project))))))))

@@ -426,7 +426,7 @@
                                              (is (= "Something went wrong" (:error res))))]
           (result/result-or-exit r)))
       (is @print-called "print-failure should be called")
-      (is (= 1 @exit-called) "exit function should be called with code 1")))
+      (is (= 2 @exit-called) "exit function should be called with the error code, 2")))
 
   (testing "result-or-exit with custom exit code"
     (let [r (result/err "Permission denied" {:code 403})

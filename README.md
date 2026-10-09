@@ -5,7 +5,7 @@ Fast prose linter. Finds writing issues, lets you ignore what you don't care abo
 ## Example
 
 ```bash
-$ proserunner --file document.md
+$ proserunner document.md
 ```
 
 ```
@@ -19,7 +19,7 @@ document.md
 Fix what matters, ignore the rest by number:
 
 ```bash
-$ proserunner --file document.md --ignore-issues 2,3
+$ proserunner document.md --ignore-issues 2,3
 ```
 
 ```
@@ -35,32 +35,40 @@ Clone the repo, `cd` into it, then pick one:
 ```bash
 # Option 1: native binary (needs Babashka, Clojure CLI, and GraalVM; fastest startup)
 bb install                          # Installs to ~/.local/bin (open a new shell if it wasn't on your PATH)
-proserunner --file document.md      # Check a file, from anywhere
-proserunner --init-project          # Set up project config
+proserunner document.md             # Check a file, from anywhere
+proserunner docs/ README.md         # Check several paths
+proserunner init                    # Set up project config
 
 # Option 2: Babashka only (no build, no Java); run from the repo
-bb lint --file /path/to/document.md # Same flags as proserunner
+bb lint /path/to/document.md        # Same flags as proserunner
 
 # Option 3: Clojure CLI (needs Java and Clojure CLI, slower startup); run from the repo
-clojure -M:run --file /path/to/document.md
+clojure -M:run /path/to/document.md
 ```
 
 Options 2 and 3 resolve relative paths from the repo directory, so pass an absolute path to your file.
 
 See [installation](docs/installation.md) for details.
 
+In CI, the exit status does the work: `0` means no issues, `1` means issues were found, `2` means something went wrong.
+
+```bash
+proserunner docs/ -o plain   # Fails the build on issues; one issue per line in the log
+```
+
 ## Why it's useful
 
 - **Numbered issues** - Ignore specific problems by number: `--ignore-issues 1,3,5`. Numbers are for the current run.
+- **Pipes** - `proserunner -` checks standard input, so it fits after pandoc or your clipboard.
 - **Customizable** - Add checks as EDN files. Toggle them on/off without touching code.
 - **Fast** - Parallel processing, smart caching.
-- **Flexible** - Output formats: table, JSON, EDN, verbose.
+- **Flexible** - Output formats: grouped, plain (one issue per line), table, JSON, EDN, verbose.
 - **Smart ignores** - Run it, fix what matters, ignore the rest by number. Ignores remember location.
 - **Project friendly** - Commit ignore files and custom checks. Everyone sees the same issues.
 
 ## What it checks
 
-Ships with 22 checks (run `proserunner --checks` to see yours):
+Ships with 22 checks (run `proserunner checks` to see yours):
 
 | Name               | Kind        | Explanation                                                                                     |
 | ------------------ | ----------- | ----------------------------------------------------------------------------------------------- |
@@ -91,7 +99,7 @@ Ships with 22 checks (run `proserunner --checks` to see yours):
 
 ## Customizing checks
 
-**Turn off checks** - Edit `~/.proserunner/config.edn`:
+**Turn off checks** - Edit `~/.config/proserunner/config.edn` (or `$XDG_CONFIG_HOME/proserunner/`):
 
 ```clojure
 {:checks
@@ -104,15 +112,16 @@ Ships with 22 checks (run `proserunner --checks` to see yours):
 
 **Add custom checks** - Drop `.edn` files in:
 
-- Global: `~/.proserunner/custom/`
+- Global: `~/.config/proserunner/custom/`
 - Project: `.proserunner/checks/`
 
-Or use: `proserunner --add-checks ~/my-checks`
+Or use: `proserunner checks add ~/my-checks`
 
 See [Usage docs](docs/usage.md#custom-checks) for check examples.
 
 ## Docs
 
 - [Installation](docs/installation.md) - Build and install
-- [Usage](docs/usage.md) - Checks, config, ignores
+- [Usage](docs/usage.md) - Commands, checks, config, ignores
+- [Upgrading from 0.7](docs/usage.md#upgrading-from-07) - Commands replaced the action flags, and config moved to `~/.config/proserunner`
 - [Architecture](docs/architecture.md) - How it works
