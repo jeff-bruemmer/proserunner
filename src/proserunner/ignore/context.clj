@@ -48,16 +48,13 @@
    - :global - Force global scope (ignore.edn in the global config directory)
    - :project - Force project scope (.proserunner/config.edn)
    - :start-dir - Starting directory for project detection"
-  ([specimen]
-   (sys/call-with-config-lock
-    #(file/write! (core/add-specimen (file/read) specimen))))
-  ([specimen options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (sys/call-with-config-lock
-        #(if (= target :global)
-           (file/write! (core/add-specimen (file/read) specimen))
-           (add-ignore-to-project! specimen project-root)))))))
+  [specimen options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! (core/add-specimen (file/read) specimen))
+          (add-ignore-to-project! specimen project-root))))))
 
 (defn remove!
   "Removes a specimen from the ignore list with context-aware targeting.
@@ -67,16 +64,13 @@
    - :global - Force global scope (ignore.edn in the global config directory)
    - :project - Force project scope (.proserunner/config.edn)
    - :start-dir - Starting directory for project detection"
-  ([specimen]
-   (sys/call-with-config-lock
-    #(file/write! (core/remove-specimen (file/read) specimen))))
-  ([specimen options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (sys/call-with-config-lock
-        #(if (= target :global)
-           (file/write! (core/remove-specimen (file/read) specimen))
-           (remove-ignore-from-project! specimen project-root)))))))
+  [specimen options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! (core/remove-specimen (file/read) specimen))
+          (remove-ignore-from-project! specimen project-root))))))
 
 (defn list
   "Returns map with :ignore (set) and :ignore-issues (vector) with context-aware targeting.
@@ -104,18 +98,16 @@
             :ignore-issues (:ignore-issues config)}))))))
 
 (defn clear!
-  "Clears all ignored specimens and issues."
-  ([]
-   (sys/call-with-config-lock
-    #(file/write! {:ignore #{} :ignore-issues #{}})))
-  ([options]
-   (context/with-context options
-     (fn [{:keys [target project-root]}]
-       (sys/call-with-config-lock
-        #(if (= target :global)
-           (file/write! {:ignore #{} :ignore-issues #{}})
-           ;; Keep the rest of the project config
-           (let [config (project-config/read project-root)]
-             (project-config/write! project-root (assoc config
-                                                        :ignore #{}
-                                                        :ignore-issues #{})))))))))
+  "Clears all ignored specimens and issues with context-aware targeting.
+   Takes the same options as add!."
+  [options]
+  (context/with-context options
+    (fn [{:keys [target project-root]}]
+      (sys/call-with-config-lock
+       #(if (= target :global)
+          (file/write! {:ignore #{} :ignore-issues #{}})
+          ;; Keep the rest of the project config
+          (let [config (project-config/read project-root)]
+            (project-config/write! project-root (assoc config
+                                                       :ignore #{}
+                                                       :ignore-issues #{}))))))))

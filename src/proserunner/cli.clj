@@ -257,7 +257,6 @@
                   (assoc :paths (vec (distinct (concat (when (:file options) [(:file options)])
                                                        paths))))
                   (cond-> help-topic (assoc :help-topic help-topic)))
-     :arguments (vec paths)
      :summary summary
      :errors (cond-> (vec errors) error (conj error))
      :warnings warnings

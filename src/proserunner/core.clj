@@ -83,7 +83,8 @@
   Returns the expanded options, with :exit-code set."
   [args]
   (let [{:keys [options summary errors warnings command-word]} (cli/parse args)
-        paths (:paths options)
+        ;; Lazy, so the file checks run once, inside the try below
+        path-errs (path-errors (:paths options))
         expanded-options (assoc options
                                 :summary summary
                                 :explicit-config? (some? (:config options)))]
@@ -100,8 +101,8 @@
                  (do (error/message (error/describe errors cli/long-opts))
                      (:error exit-codes))
 
-                 (seq (path-errors paths))
-                 (do (error/message (path-errors paths))
+                 (seq path-errs)
+                 (do (error/message path-errs)
                      (:error exit-codes))
 
                  :else

@@ -480,7 +480,9 @@ Default checks are downloaded from GitHub once, on first run. After that, Proser
 
 ## Upgrading from 0.7
 
-Old flags keep working, but print a warning that names the replacement.
+Old flags keep working, but print a warning that names the replacement. Two changes can't warn, so check your scripts for them: the exit status and `-q`.
+
+**Exit status 1 now means issues were found.** In 0.7, a run that found issues exited 0, and errors exited 1. Now it's 0 for no issues, 1 for issues, and 2 for errors (see [Output and exit status](#output-and-exit-status)). A CI step that ran proserunner only to report now fails when there are issues. To keep it informational but still fail on errors: `proserunner docs/ || [ $? -eq 1 ]`.
 
 **Actions are commands now:**
 
@@ -501,11 +503,11 @@ Old flags keep working, but print a warning that names the replacement.
 
 **Fewer single-letter flags.** Only `-c`, `-e`, `-f`, `-h`, `-o`, `-q`, and `-v` remain. The rest, such as `-b`, `-n`, `-d`, `-J`, `-G`, and `-P`, still work for now and warn. Use the long form: `--code-blocks`, `--no-cache`, `--cache-dir`, `--ignore-issues`, `--global`, `--project`.
 
-**`-q` means `--quiet`.** It used to mean `--quoted-text`, which has no short form now. This is the one change that can't warn: a script that used `-q` to check quoted text now runs quietly and skips quoted text. Change it to `--quoted-text`.
+**`-q` means `--quiet`.** It used to mean `--quoted-text`, which has no short form now. This can't warn: a script that used `-q` to check quoted text now runs quietly and skips quoted text. Change it to `--quoted-text`.
 
 **Config moved** from `~/.proserunner/` to `~/.config/proserunner/` (see [Config](#config)). The move happens on the first run. Backups from `checks restore` go in `backups/` there, not `~/.proserunner-backup-*`.
 
-**Default checks are pinned** to the version each release was tested with; `checks restore` reinstalls that version instead of the latest.
+**Default checks are pinned** to the version each release was tested with. Proserunner no longer checks GitHub for newer checks on each run, and `checks restore` reinstalls the pinned version instead of the latest.
 
 ## Performance baselines
 

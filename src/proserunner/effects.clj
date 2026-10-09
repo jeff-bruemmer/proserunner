@@ -335,9 +335,7 @@
 (defmethod execute-effect :checks/print
   [[_ config]]
   (effect-wrapper
-   #(do
-      (output-checks/print config)
-      {:config config})
+   #(result/fmap (output-checks/print config) (constantly {:config config}))
    :checks/print
    {}))
 

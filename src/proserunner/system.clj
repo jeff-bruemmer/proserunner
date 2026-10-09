@@ -50,10 +50,13 @@
   (apply file-utils/join-path (config-dir) parts))
 
 (defn display-path
-  "Shortens a path under the home directory to start with ~."
+  "Shortens a path under the home directory to start with ~. Only whole
+  directory names match: with home /home/al, /home/alice stays as is."
   [^String path]
-  (let [^String home (home-dir)]
-    (if (and home (string/starts-with? path home))
+  (let [^String home (some-> (home-dir) (string/replace #"[/\\]+$" ""))]
+    (if (and (not (string/blank? home))
+             (or (= path home)
+                 (string/starts-with? path (str home java.io.File/separator))))
       (str "~" (subs path (count home)))
       path)))
 

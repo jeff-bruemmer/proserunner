@@ -16,7 +16,7 @@
           (alias 'install-helper 'tasks.install))
 
   ;; Main proserunner task (named 'lint' to avoid conflict with proserunner file)
-  lint {:doc "Run proserunner via babashka (no build needed): bb lint --file <file-or-dir>"
+  lint {:doc "Run proserunner via babashka (no build needed): bb lint <file-or-dir>"
         :requires ([proserunner.core :as core])
         :task (apply core/-main cli-args)}
 
