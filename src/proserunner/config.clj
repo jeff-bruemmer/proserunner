@@ -15,13 +15,19 @@
             [babashka.http-client :as client]
             [clojure.string :as string]
             [clojure.java.io :as io]
-            [clojure.pprint :as pprint]
-            [cheshire.core :as json]))
+            [clojure.pprint :as pprint]))
 
 (set! *warn-on-reflection* true)
 
-(def remote-address "https://github.com/jeff-bruemmer/proserunner-default-checks/archive/main.zip")
-(def remote-api "https://api.github.com/repos/jeff-bruemmer/proserunner-default-checks/commits/main")
+;; Each release installs one fixed commit of the default checks, so a
+;; released binary never picks up checks it wasn't tested with. To ship
+;; new checks, run `bb pin-checks` and paste its output here.
+(def default-checks-ref "d4597fbf0f41f93b46511a2706c4e56c7bf6292b")
+(def default-checks-sha256 "53dcc123317e0341e61ec3ed9f1b018329d81818cde8620316a41e95b994871a")
+
+(def remote-address
+  (str "https://github.com/jeff-bruemmer/proserunner-default-checks/archive/"
+       default-checks-ref ".zip"))
 
 (def default-global-config-template
   "{:checks []}")
@@ -125,57 +131,79 @@
   (file-utils/ensure-parent-dir save-path)
   (io/copy stream out-file))
 
-(defn ^:private unzip-file!
-  "Uncompress zip archive, renaming entries from old-name to new-name.
+(defn- archive-path
+  "An archive entry's path without the top-level directory GitHub puts
+  everything under, or nil for that directory itself."
+  [entry-name]
+  (let [[_ path] (re-find #"^[^/]*/(.*)$" entry-name)]
+    (when-not (string/blank? path)
+      path)))
 
-   Options map keys:
-   - :input - Zip archive content (byte array or input stream source)
-   - :output - Target directory path
-   - :old-name - String to replace in entry names
-   - :new-name - Replacement string for entry names"
-  [{:keys [input output old-name new-name]}]
+(defn archive-digest
+  "SHA-256 of the files in a default-checks archive: each file's path (see
+  archive-path), size, and bytes, in path order. Hashing the contents
+  rather than the zip keeps the digest stable if GitHub changes how it
+  builds archives."
+  [zip-bytes]
+  (let [files (with-open [zis (java.util.zip.ZipInputStream.
+                               (java.io.ByteArrayInputStream. zip-bytes))]
+                (loop [files (sorted-map)]
+                  (if-let [entry (.getNextEntry zis)]
+                    (let [path (archive-path (.getName entry))]
+                      (recur (if (and path (not (.isDirectory entry)))
+                               (assoc files path (.readAllBytes zis))
+                               files)))
+                    files)))
+        md (java.security.MessageDigest/getInstance "SHA-256")]
+    (doseq [[^String path ^bytes content] files]
+      (.update md (.getBytes (str path "\n" (alength content) "\n") "UTF-8"))
+      (.update md content))
+    (format "%064x" (BigInteger. 1 (.digest md)))))
+
+(defn- verify-archive!
+  "Throws unless `zip-bytes` holds exactly the pinned default checks."
+  [zip-bytes]
+  (let [actual (archive-digest zip-bytes)]
+    (when-not (= actual default-checks-sha256)
+      (throw (ex-info (str "The default checks downloaded from " remote-address
+                           " don't match the checksum this version of proserunner expects,"
+                           " so nothing was installed. Try again; if it keeps happening, please report it: "
+                           console/issues-url)
+                      {:expected default-checks-sha256 :actual actual})))))
+
+(defn ^:private unzip-file!
+  "Extracts a zip archive into `output`, dropping the top-level directory
+  (see archive-path)."
+  [input output]
   (with-open [stream (-> input io/input-stream java.util.zip.ZipInputStream.)]
     (loop [entry (.getNextEntry stream)]
       (when entry
-        (let [entry-name (string/replace (.getName entry) old-name new-name)
-              save-path (file-utils/join-path output entry-name)
-              out-file (io/file save-path)]
-          ;; Entries like ../../.bashrc must not land outside output
-          (when-not (.startsWith (.normalize (.toAbsolutePath (.toPath out-file)))
-                                 (.toAbsolutePath (.toPath (io/file output))))
-            (throw (ex-info (str "Refusing to extract " (.getName entry)
-                                 ": it points outside " output)
-                            {:entry (.getName entry)})))
-          (if (.isDirectory entry)
-            (file-utils/mkdirs-if-missing save-path)
-            (copy! stream save-path out-file))
-          (recur (.getNextEntry stream)))))))
-
-(defn ^:private get-remote-version
-  "Get the latest commit SHA from GitHub API.
-   Returns nil if unable to fetch (offline, rate limit, etc)."
-  []
-  (try
-    (let [resp (client/get remote-api (request-opts remote-api {:timeout 3000
-                                                                :throw false}))]
-      (when (= 200 (:status resp))
-        (let [body (json/parse-string (:body resp) true)]
-          (:sha body))))
-    (catch Exception _ nil)))
+        (when-let [entry-name (archive-path (.getName entry))]
+          (let [save-path (file-utils/join-path output entry-name)
+                out-file (io/file save-path)]
+            ;; Entries like ../../.bashrc must not land outside output
+            (when-not (.startsWith (.normalize (.toAbsolutePath (.toPath out-file)))
+                                   (.toAbsolutePath (.toPath (io/file output))))
+              (throw (ex-info (str "Refusing to extract " (.getName entry)
+                                   ": it points outside " output)
+                              {:entry (.getName entry)})))
+            (if (.isDirectory entry)
+              (file-utils/mkdirs-if-missing save-path)
+              (copy! stream save-path out-file))))
+        (recur (.getNextEntry stream))))))
 
 (defn ^:private write-local-version!
-  "Write the current version SHA to local version file atomically."
-  [sha]
-  (when sha
-    (let [version-file (sys/filepath ".proserunner" ".version")]
-      (file-utils/atomic-spit version-file sha))))
+  "Records which commit of the default checks is installed."
+  []
+  (file-utils/atomic-spit (sys/config-path ".version") default-checks-ref))
 
 (defn ^:private backup-directory!
-  "Create a timestamped backup of a directory."
+  "Copies `dir-path` to a timestamped directory under backups/ in the
+  config directory."
   [dir-path]
   (let [timestamp (.format (java.text.SimpleDateFormat. "yyyyMMdd-HHmmss")
                            (java.util.Date.))
-        backup-dir (file-utils/join-path (sys/home-dir) (str ".proserunner-backup-" timestamp))]
+        backup-dir (sys/config-path "backups" (str "default-" timestamp))]
     (when (.exists (io/file dir-path))
       (file-utils/mkdirs-if-missing backup-dir)
       (doseq [^java.io.File file (file-seq (io/file dir-path))]
@@ -184,39 +212,28 @@
                 target (io/file (str backup-dir rel-path))]
             (file-utils/ensure-parent-dir (.getPath target))
             (io/copy file target))))
-      (console/status "Created backup at: " backup-dir)
+      (console/status "Created backup at: " (sys/display-path backup-dir))
       backup-dir)))
-
-(defn ensure-global-config!
-  "Ensures ~/.proserunner/ directory and ignore.edn exist.
-   Does NOT create config.edn - that should be created by --restore-defaults.
-   Idempotent - safe to call multiple times."
-  []
-  (let [proserunner-dir (sys/filepath ".proserunner")
-        ignore-path (sys/filepath ".proserunner" "ignore.edn")]
-    (file-utils/mkdirs-if-missing proserunner-dir)
-    (when-not (.exists (io/file ignore-path))
-      (file-utils/atomic-spit ignore-path default-ignore-template))))
 
 (defn- create-default-config-entry!
   "Creates config.edn with auto-discovered default check entry.
-   Discovers .edn files in ~/.proserunner/default/ directory."
+   Discovers .edn files in the default/ directory."
   []
-  (let [config-path (sys/filepath ".proserunner" "config.edn")
-        default-dir (sys/filepath ".proserunner" "default")
+  (let [config-path (sys/config-path "config.edn")
+        default-dir (sys/config-path "default")
         edn-files (check-resolver/get-edn-files default-dir)
         config-content {:checks [{:name "default"
                                   :directory "default"
                                   :files (or edn-files [])}]}]
     (file-utils/atomic-spit config-path
       (str ";; Proserunner Global Configuration\n"
-           ";; Auto-generated by --restore-defaults\n\n"
+           ";; Auto-generated when the default checks were installed\n\n"
            (with-out-str (pprint/pprint config-content))))))
 
 ;;;; Installing default checks
 
 (def ^:private tmp-prefix
-  "Prefix for temporary directories inside ~/.proserunner."
+  "Prefix for temporary directories inside the config directory."
   ".tmp-")
 
 (defn- move!
@@ -279,53 +296,55 @@
     (file-utils/delete-tree! f)))
 
 (defn- install-default-checks!
-  "Downloads the default checks into ~/.proserunner.
+  "Downloads the pinned default checks into the config directory.
 
-  The archive is extracted to a temporary directory and moved into place
-  from there, so a failed or interrupted download leaves the current
-  checks, config, and ignores as they were. The next download deletes
-  anything an interrupted one left behind. With `backup?`, the current
-  default checks are copied to a timestamped backup first.
+  The archive's checksum is verified, then it's extracted to a temporary
+  directory and moved into place from there, so a failed or interrupted
+  download leaves the current checks, config, and ignores as they were.
+  The next download deletes anything an interrupted one left behind. With
+  `backup?`, the current default checks are copied to a timestamped backup
+  first. Everything after the download holds the config lock, so two runs
+  can't install over each other or delete each other's staging directory.
 
   Returns Result with {:created-config? bool}, or Failure on error."
   [{:keys [backup?]}]
   (result/try-result-with-context
    (fn []
-     (let [dir (sys/filepath ".proserunner")
-           default-dir (sys/filepath ".proserunner" "default")
-           config-file (sys/filepath ".proserunner" "config.edn")]
-       (file-utils/mkdirs-if-missing dir)
-       (remove-leftovers! dir)
-       (console/status "Downloading default checks from " remote-address)
-       (let [zip-result (get-remote-zip! remote-address)
-             _ (when (result/failure? zip-result)
-                 (throw (ex-info (:error zip-result) (:context zip-result))))
-             staging (str (java.nio.file.Files/createTempDirectory
-                           (.toPath (io/file dir))
-                           tmp-prefix
-                           (make-array java.nio.file.attribute.FileAttribute 0)))]
-         (try
-           (unzip-file! {:input (:value zip-result)
-                         :output staging
-                         :old-name "proserunner-default-checks-main/"
-                         :new-name ""})
-           (when (and backup? (.exists (io/file default-dir)))
-             (console/status "Backing up existing checks...")
-             (backup-directory! default-dir))
-           (install-staged! staging dir)
-           (finally
-             (file-utils/delete-tree! staging))))
-       (when-let [version (get-remote-version)]
-         (write-local-version! version))
-       (let [create? (not (.exists (io/file config-file)))]
-         (when create?
-           (create-default-config-entry!))
-         {:created-config? create?})))
+     (console/status "Downloading default checks from " remote-address)
+     (let [zip-result (get-remote-zip! remote-address)
+           _ (when (result/failure? zip-result)
+               (throw (ex-info (:error zip-result) (:context zip-result))))
+           zip (:value zip-result)]
+       (verify-archive! zip)
+       (sys/call-with-config-lock
+        (fn []
+          (let [dir (sys/config-dir)
+                default-dir (sys/config-path "default")
+                config-file (sys/config-path "config.edn")]
+            (file-utils/mkdirs-if-missing dir)
+            (remove-leftovers! dir)
+            (let [staging (str (java.nio.file.Files/createTempDirectory
+                                (.toPath (io/file dir))
+                                tmp-prefix
+                                (make-array java.nio.file.attribute.FileAttribute 0)))]
+              (try
+                (unzip-file! zip staging)
+                (when (and backup? (.exists (io/file default-dir)))
+                  (console/status "Backing up existing checks...")
+                  (backup-directory! default-dir))
+                (install-staged! staging dir)
+                (finally
+                  (file-utils/delete-tree! staging))))
+            (write-local-version!)
+            (let [create? (not (.exists (io/file config-file)))]
+              (when create?
+                (create-default-config-entry!))
+              {:created-config? create?}))))))
    {:operation :download-checks}))
 
 (defn restore-defaults!
-  "Downloads fresh default checks, backing up the current ones first.
-  Keeps config.edn, ignore.edn, and custom checks.
+  "Reinstalls the default checks this version ships with, backing up the
+  current ones first. Keeps config.edn, ignore.edn, and custom checks.
 
   Returns Result<nil> - Success when complete, Failure on error."
   []
@@ -339,25 +358,64 @@
      (result/ok nil))))
 
 (defn initialize-proserunner
-  "Sets up ~/.proserunner directory and downloads default checks for first-time users.
+  "Sets up the config directory and downloads default checks for first-time users.
 
    Returns Result with config on success, or Failure with error details."
   [default-config]
-  (console/status "First run: setting up ~/.proserunner")
+  (console/status "First run: setting up " (sys/display-path (sys/config-dir)))
   (let [dl-result (install-default-checks! {:backup? false})]
     (if (result/failure? dl-result)
       (result/map-err dl-result #(str "Failed to download default checks: " %))
       (do
-        (console/status "Created Proserunner directory: " (sys/filepath ".proserunner/"))
-        (console/status "You can store custom checks in: " (sys/filepath ".proserunner" "custom/"))
-        (console/status "To update the default checks later, run: proserunner --restore-defaults")
+        (console/status "You can store custom checks in: "
+                        (sys/display-path (sys/config-path "custom/")))
         (loader/load-config-from-file default-config)))))
+
+;;;; The global config directory
+
+(defn migrate-legacy-config!
+  "Moves ~/.proserunner, where earlier releases kept the global config, to
+  the XDG config directory. If the move fails (for example, across
+  filesystems), sys/config-dir keeps using ~/.proserunner, and this warns
+  each run with the command to move it by hand."
+  []
+  (let [legacy (io/file (sys/legacy-config-dir))
+        target (io/file (sys/xdg-config-dir))
+        shown #(sys/display-path (str %))]
+    (when (.isDirectory legacy)
+      (if (.exists target)
+        (console/warn "Both " (shown legacy) " and " (shown target) " exist; using "
+                      (shown target) ". Remove " (shown legacy)
+                      " once you've copied anything you need from it.")
+        (try
+          (file-utils/mkdirs-if-missing (.getParent target))
+          (move! legacy target)
+          (console/status "Moved " (shown legacy) " to " (shown target)
+                          ", the standard place for config files.")
+          (catch Exception e
+            ;; Another run may have just moved it
+            (when-not (.exists target)
+              (console/warn "Couldn't move " (shown legacy) " to " (shown target)
+                            " (" (or (.getMessage e) (.getSimpleName (class e)))
+                            "), so proserunner is still using it. To move it yourself: mv "
+                            (shown legacy) " " (shown target)))))))))
+
+(defn ensure-global-config!
+  "Moves a legacy ~/.proserunner into place, then ensures the config
+  directory and ignore.edn exist. Does NOT create config.edn; installing
+  the default checks does that. Idempotent - safe to call multiple times."
+  []
+  (migrate-legacy-config!)
+  (let [ignore-path (sys/config-path "ignore.edn")]
+    (file-utils/mkdirs-if-missing (sys/config-dir))
+    (when-not (.exists (io/file ignore-path))
+      (file-utils/atomic-spit ignore-path default-ignore-template))))
 
 (defn default
   "If current config isn't valid, use the default."
   [options]
   (let [cur-config (:config options)
-        new-config (sys/filepath ".proserunner" "config.edn")]
+        new-config (sys/config-path "config.edn")]
     (if (or (nil? cur-config)
             (not (.exists (io/file cur-config))))
       (assoc options :config new-config)
@@ -374,7 +432,7 @@
       (if (contains? missing "default")
         (do
           (console/status "Default checks not found.")
-          (let [default-config (sys/filepath ".proserunner" "config.edn")
+          (let [default-config (sys/config-path "config.edn")
                 init-result (initialize-proserunner default-config)]
             (if (result/success? init-result)
               (result/ok nil)
@@ -419,7 +477,7 @@
   - :in-project? - Is the current directory in a project?
   - :config-exists? - Does the global config file exist?
 
-  Default checks are never updated implicitly; --restore-defaults does that."
+  Default checks are never updated implicitly; `proserunner checks restore` does that."
   [{:keys [using-default? custom-exists? in-project? config-exists?]}]
   (cond
     ;; Custom config file specified via -c
@@ -442,7 +500,7 @@
   "Fetches or creates config file. Will exit on failure.
    Downloads default checks on first run only; it doesn't check for
    updates, so results don't change between runs unless the user runs
-   --restore-defaults.
+   `proserunner checks restore`.
 
    If in a project directory, loads project config which may include
    project-specific checks and ignores merged with global config."
@@ -450,9 +508,9 @@
   (when (and config-filepath (not (string? config-filepath)))
     (throw (ex-info (str "fetch-or-create! expects a string filepath, got: " (type config-filepath))
                     {:config-filepath config-filepath})))
-  (let [default-config (sys/filepath ".proserunner" "config.edn")
+  (let [default-config (sys/config-path "config.edn")
         using-default? (or (nil? config-filepath) (= config-filepath default-config))
-        checks-dir-exists? (.exists (io/file (sys/filepath ".proserunner" "default")))
+        checks-dir-exists? (.exists (io/file (sys/config-path "default")))
         current-dir (System/getProperty "user.dir")
         in-project? (manifest/find current-dir)]
 

@@ -4,6 +4,7 @@
             [proserunner.project-config :as project-config]
             [proserunner.result :as result]
             [proserunner.storage :as storage]
+            [proserunner.system :as sys]
             [clojure.test :as t :refer [deftest is testing use-fixtures]]
             [clojure.java.io :as io]
             [editors.registry :as registry]
@@ -23,11 +24,7 @@
 (use-fixtures :each setup-editors)
 
 (deftest compute
-  (let [config-path (str (System/getProperty "user.home")
-                         java.io.File/separator
-                         ".proserunner"
-                         java.io.File/separator
-                         "config.edn")
+  (let [config-path (sys/config-path "config.edn")
         input-result (input/make {:file "resources"
                                       :config config-path
                                       :output "table"
@@ -48,11 +45,7 @@
 
 (deftest no-cache-option
   (testing "no-cache option bypasses cache and forces recomputation"
-    (let [config-path (str (System/getProperty "user.home")
-                           java.io.File/separator
-                           ".proserunner"
-                           java.io.File/separator
-                           "config.edn")
+    (let [config-path (sys/config-path "config.edn")
           opts {:file "resources"
                 :config config-path
                 :output "table"
@@ -407,11 +400,7 @@
           test-content "She said \"obviously this is wrong\" and continued walking."
           _ (.mkdirs (io/file temp-dir))
           _ (spit temp-file test-content)
-          config-path (str (System/getProperty "user.home")
-                          File/separator
-                          ".proserunner"
-                          File/separator
-                          "config.edn")]
+          config-path (sys/config-path "config.edn")]
 
       (try
         (testing "Without --quoted-text flag, quoted portions are not checked"
@@ -457,8 +446,7 @@
 
 (deftest compute-paths-merges-several-paths
   (testing "issues from every path land in one payload, numbered as one run"
-    (let [config-path (str (System/getProperty "user.home")
-                           File/separator ".proserunner" File/separator "config.edn")
+    (let [config-path (sys/config-path "config.edn")
           cache-dir (str (System/getProperty "java.io.tmpdir") File/separator
                          "proserunner-compute-paths-" (System/nanoTime))
           opts {:paths ["resources/drivel.md" "resources/more/words.md"]

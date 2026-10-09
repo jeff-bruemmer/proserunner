@@ -72,7 +72,7 @@
       (is (vector? report))
       (is (some #(re-find #"Found \d+ stale" %) report))
       (is (some #(re-find #"deleted\.md" %) report))
-      (is (some #(re-find #"--clean-ignores" %) report))))
+      (is (some #(re-find #"proserunner ignore clean" %) report))))
 
   (testing "includes file paths and line numbers in report"
     (let [audit-result {:stale {:ignore #{} :ignore-issues [{:file "del.md" :line-num 5 :specimen "x"}]}

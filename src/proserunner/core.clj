@@ -2,17 +2,15 @@
   "Main entry point for Proserunner CLI. Parses command-line arguments and dispatches to command handlers."
   (:gen-class)
   (:require [proserunner
+             [cli :as cli]
              [commands :as cmd]
              [config :as conf]
              [console :as console]
              [effects :as effects]
              [error :as error]
-             [fmt :as fmt]
              [output :as output]
              [result :as result]
-             [text :as text]]
-            [clojure.string :as str]
-            [clojure.tools.cli :as cli]))
+             [text :as text]]))
 
 (set! *warn-on-reflection* true)
 
@@ -20,83 +18,31 @@
   "Exit statuses: no issues, issues found, and errors (bad input, failed runs)."
   {:ok 0 :issues 1 :error 2})
 
-(def output-formats #{"group" "plain" "table" "verbose" "json" "edn"})
-
-(def options
-  "CLI option configuration. See:
-  https://github.com/clojure/tools.cli"
-  [["-b" "--code-blocks" "Include code blocks when checking. Default: skip them." :default false]
-   ["-C" "--checks" "List all enabled checks with their types and descriptions."]
-   ["-c" "--config CONFIG" "Use this config file instead of the global and project configs." :default nil
-    :validate [text/file-exists? text/file-error-msg]]
-   ["-d" "--cache-dir DIR" "Cache directory location. Priority: CLI > $PROSERUNNER_CACHE_DIR > $XDG_CACHE_HOME/proserunner > $TMPDIR/proserunner-storage"
-    :default nil
-    :validate [(fn [s] (and s (not (str/blank? s))))
-               "Cache directory cannot be empty"]]
-   ["-q" "--quoted-text" "Include quoted text when checking. Default: skip it." :default false]
-   ["-e" "--exclude PATTERN" "Exclude files/dirs matching glob pattern. Can be used multiple times or comma-separated. Example: --exclude \"*.log,temp/**\""
-    :default []
-    :assoc-fn (fn [m k v]
-                (let [patterns (if (re-find #"," v)
-                                 (str/split v #",\s*")
-                                 [v])]
-                  (update m k (fnil into []) patterns)))]
-   ["-f" "--file FILE" "File or directory to check, same as passing PATH. Directories processed recursively."
-    :default nil
-    :validate [text/file-exists? text/file-error-msg
-               text/less-than-10-MB? text/file-size-msg]]
-   ["-h" "--help" "Show this help."]
-   ["-i" "--ignore IGNORE" "Deprecated: has no effect."]
-   ["-n" "--no-cache" "Skip cache, force re-processing." :default false]
-   ["-s" "--skip-ignore" "Skip all ignore lists for this run." :default false]
-   ["-o" "--output FORMAT" "Output format: 'group' (default), 'plain', 'table', 'verbose', 'json', 'edn'."
-    :default "group"
-    :parse-fn str/lower-case
-    :validate [output-formats "must be one of: group, plain, table, verbose, json, edn."]]
-   ["-p" "--parallel-files" "Process files concurrently."
-    :default false]
-   ["-S" "--sequential-lines" "Process lines sequentially (for debugging)."
-    :default false]
-   ["-t" "--timer" "Print elapsed time to stderr." :default false]
-   [nil "--quiet" "Suppress status messages and the summary line. Errors still print."]
-   ["-v" "--version" "Show version."]
-   ["-A" "--add-ignore SPECIMEN" "Add specimen to ignore list (applies everywhere)."]
-   ["-R" "--remove-ignore SPECIMEN" "Remove specimen from ignore list."]
-   ["-L" "--list-ignored" "List all ignored specimens."]
-   ["-X" "--clear-ignored" "Clear all ignored specimens. Asks first when run in a terminal."]
-   [nil "--force" "Don't ask for confirmation (with --clear-ignored)."]
-   ["-Z" "--ignore-all" "Ignore all current findings (creates contextual ignores)."]
-   ["-J" "--ignore-issues NUMBERS" "Ignore issues by number. Supports ranges: 1,3,5-7. Requires a PATH or --file."]
-   ["-U" "--audit-ignores" "Find stale ignores."]
-   ["-W" "--clean-ignores" "Remove stale ignores. Preview with --audit-ignores."]
-   ["-D" "--restore-defaults" "Download fresh default checks from GitHub."]
-   ["-a" "--add-checks SOURCE" "Import checks from directory."]
-   ["-N" "--name NAME" "Custom name for imported checks (use with --add-checks)."]
-   ["-G" "--global" "Apply to global config (~/.proserunner/)."]
-   ["-P" "--project" "Apply to project config (.proserunner/)."]
-   ["-I" "--init-project" "Create .proserunner/ with default config."]])
-
-(def ^:private long-opts
-  "Long option names, e.g. \"--file\", for did-you-mean suggestions."
-  (map #(first (str/split (second %) #" ")) options))
-
-(defn- with-paths
-  "Collects --file and positional arguments into :paths."
-  [{:keys [file] :as opts} arguments]
-  (assoc opts :paths (vec (distinct (concat (when file [file]) arguments)))))
-
 (defn- path-errors
-  "Validates positional paths the way --file is validated."
-  [arguments]
-  (for [p arguments
+  "Validates positional paths the way --file is validated. A missing first
+  path that looks like a mistyped command gets a suggestion."
+  [paths]
+  (for [[i p] (map-indexed vector paths)
+        :when (not (text/stdin? p))
         :let [problem (cond
-                        (not (text/file-exists? p)) "no such file or directory."
+                        (not (text/file-exists? p))
+                        (str "no such file or directory."
+                             (when-let [c (and (zero? i) (error/suggest-option p cli/commands))]
+                               (str " Did you mean the '" c "' command?")))
                         (not (text/less-than-10-MB? p)) text/file-size-msg)]
         :when problem]
     (str p ": " problem)))
 
+(defn- command-shadows-path
+  "When the command word also names a file or directory here, says how to
+  check that path instead."
+  [command-word]
+  (when (and command-word (.exists (java.io.File. ^String command-word)))
+    (str "Running the '" command-word "' command. To check the path named "
+         command-word ", use ./" command-word)))
+
 (defn- needs-global-config?
-  "Help and version shouldn't create ~/.proserunner."
+  "Help and version shouldn't create the global config directory."
   [command]
   (not (#{:help :version :default} command)))
 
@@ -110,7 +56,10 @@
       (do
         (when (needs-global-config? (cmd/determine-command opts))
           (conf/ensure-global-config!))
-        (let [command-result (cmd/dispatch-command opts)
+        ;; Resolve the default config only now: ensure-global-config! may
+        ;; have just moved ~/.proserunner to the XDG config directory
+        (let [opts (conf/default opts)
+              command-result (cmd/dispatch-command opts)
               ;; Failures are printed by execute-command-result
               effect-result (effects/execute-command-result command-result)]
           (cond
@@ -133,32 +82,31 @@
   "Parses command line `args` and applies the relevant function.
   Returns the expanded options, with :exit-code set."
   [args]
-  (let [opts (cli/parse-opts args options :summary-fn fmt/summary)
-        {:keys [options arguments errors]} opts
-        expanded-options (-> (merge opts options)
-                             (assoc :explicit-config? (some? (:config options)))
-                             conf/default
-                             (with-paths arguments))]
+  (let [{:keys [options summary errors warnings command-word]} (cli/parse args)
+        paths (:paths options)
+        expanded-options (assoc options
+                                :summary summary
+                                :explicit-config? (some? (:config options)))]
     (binding [console/*quiet* (boolean (:quiet options))]
       (assoc expanded-options :exit-code
              (try
                (cond
                  ;; -h works anywhere, regardless of other flags or errors
                  (:help options)
-                 (do (effects/execute-command-result (cmd/dispatch-command expanded-options))
+                 (do (effects/execute-command-result (cmd/dispatch-command (conf/default expanded-options)))
                      (:ok exit-codes))
 
                  (seq errors)
-                 (do (error/message (error/describe errors long-opts))
+                 (do (error/message (error/describe errors cli/long-opts))
                      (:error exit-codes))
 
-                 (seq (path-errors arguments))
-                 (do (error/message (path-errors arguments))
+                 (seq (path-errors paths))
+                 (do (error/message (path-errors paths))
                      (:error exit-codes))
 
                  :else
-                 (do (when (:ignore options)
-                       (console/warn "--ignore is deprecated and has no effect."))
+                 (do (doseq [w warnings] (console/warn w))
+                     (some-> (command-shadows-path command-word) console/status)
                      (run-command expanded-options)))
                (catch clojure.lang.ExceptionInfo e
                  (report-exception e true)

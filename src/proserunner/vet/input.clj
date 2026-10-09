@@ -83,13 +83,17 @@
 
    Returns Result<lines> - Success with all lines, or Failure on error."
   [{:keys [code-blocks check-quoted-text file exclude-patterns parallel?]}]
-  (let [ignore-info (build-ignore-patterns file exclude-patterns)
-        files-result (filter-valid-files file ignore-info)]
-    (if (result/failure? files-result)
-      files-result
-      (let [files (:value files-result)
-            fetch-fn #(text/fetch! code-blocks % check-quoted-text)]
-        (process-files files fetch-fn parallel?)))))
+  (if (text/stdin? file)
+    (do (when (console/interactive?)
+          (console/status "Reading from standard input. Press Ctrl-D when done."))
+        (text/fetch-stdin! code-blocks check-quoted-text))
+    (let [ignore-info (build-ignore-patterns file exclude-patterns)
+          files-result (filter-valid-files file ignore-info)]
+      (if (result/failure? files-result)
+        files-result
+        (let [files (:value files-result)
+              fetch-fn #(text/fetch! code-blocks % check-quoted-text)]
+          (process-files files fetch-fn parallel?))))))
 
 (defn- determine-parallel-settings
   "Determines parallel processing settings from options.
@@ -179,7 +183,9 @@
 
   Returns Input record."
   [normalized lines loaded-checks project-ignore project-ignore-issues]
-  (let [cached-result (store/get-cached-result (:file normalized) normalized)
+  (let [cached-result (if (text/stdin? (:file normalized))
+                        (result/err "Standard input isn't cached" {:type :cache-miss})
+                        (store/get-cached-result (:file normalized) normalized))
         ;; Log corruption warnings
         _ (when (and (result/failure? cached-result)
                     (= :corrupted-cache (get-in cached-result [:context :type])))
@@ -265,8 +271,10 @@
 (defn count-files
   "Number of files a check of `file` covers, after exclusions."
   [file options]
-  (let [{:keys [exclude-patterns]} (normalize-input-options options)
-        files-result (filter-valid-files file (build-ignore-patterns file exclude-patterns))]
-    (if (result/success? files-result)
-      (count (:value files-result))
-      0)))
+  (if (text/stdin? file)
+    1
+    (let [{:keys [exclude-patterns]} (normalize-input-options options)
+          files-result (filter-valid-files file (build-ignore-patterns file exclude-patterns))]
+      (if (result/success? files-result)
+        (count (:value files-result))
+        0))))

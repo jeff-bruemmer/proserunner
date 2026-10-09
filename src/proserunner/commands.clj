@@ -17,6 +17,7 @@
             [proserunner.ignore.audit :as ignore-audit]
             [proserunner.output.format :as output-fmt]
             [proserunner.result :as result]
+            [proserunner.text :as text]
             [clojure.string :as str]))
 
 (defn project-exists?
@@ -231,10 +232,12 @@
       {:error (:error parse-result)})))
 
 (defn handle-audit-ignores
-  "Handler for auditing ignore entries to find stale ones."
+  "Handler for auditing ignore entries to find stale ones.
+  Resolves scope like clean does, so audit previews what clean removes."
   [opts]
-  {:effects [[:ignore/audit opts]]
-   :format-fn ignore-audit/format-report})
+  (let [{:keys [opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+    {:effects [[:ignore/audit opts-with-target]]
+     :format-fn ignore-audit/format-report}))
 
 (defn handle-clean-ignores
   "Handler for cleaning stale ignore entries."
@@ -332,13 +335,14 @@
     :else            :default))
 
 (def ^:private actions
-  "Action flags in the order determine-command checks them."
-  [[:add-ignore "--add-ignore"] [:remove-ignore "--remove-ignore"]
-   [:list-ignored "--list-ignored"] [:clear-ignored "--clear-ignored"]
+  "Actions in the order determine-command checks them, named as people
+  ask for them."
+  [[:add-ignore "ignore add"] [:remove-ignore "ignore remove"]
+   [:list-ignored "ignore list"] [:clear-ignored "ignore clear"]
    [:ignore-all "--ignore-all"] [:ignore-issues "--ignore-issues"]
-   [:audit-ignores "--audit-ignores"] [:clean-ignores "--clean-ignores"]
-   [:restore-defaults "--restore-defaults"] [:init-project "--init-project"]
-   [:add-checks "--add-checks"] [:file "PATH"] [:checks "--checks"]])
+   [:audit-ignores "ignore audit"] [:clean-ignores "ignore clean"]
+   [:restore-defaults "checks restore"] [:init-project "init"]
+   [:add-checks "checks add"] [:file "check PATH"] [:checks "checks"]])
 
 (defn conflicting-actions-warning
   "Returns a warning when more than one action is requested, naming the one
@@ -354,9 +358,9 @@
                     (remove #(= :file (first %)) requested)
                     requested)]
     (when (> (count requested) 1)
-      (format "Only one action runs at a time: running %s, ignoring %s."
+      (format "Only one action runs at a time: running '%s', ignoring %s."
               (second (first requested))
-              (str/join ", " (map second (rest requested)))))))
+              (str/join ", " (map #(str "'" (second %) "'") (rest requested)))))))
 
 (defn dispatch-command
   "Dispatches command based on options, returning effect description.
@@ -382,6 +386,12 @@
                 {:operation :validate-options
                  :conflict :config-scope
                  :flags [:global :project]})
+
+    (and (or ignore-issues ignore-all) (some text/stdin? (cons file paths)))
+    (result/err (str (if ignore-issues "--ignore-issues" "--ignore-all")
+                     " can't be used with standard input: ignores are tied to a file. Check the file itself instead.")
+                {:operation :validate-options
+                 :conflict :stdin})
 
     (and ignore-issues (not (or file (seq paths))))
     (result/err "--ignore-issues needs the PATH you checked, so the issue numbers match. Example: proserunner doc.md --ignore-issues 1,3"

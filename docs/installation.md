@@ -31,12 +31,12 @@ Run proserunner straight from the repo with Babashka:
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git
 cd proserunner
-bb lint --file /path/to/file-or-dir
+bb lint /path/to/file-or-dir
 ```
 
 - Babashka
 
-`bb lint` takes every proserunner flag (`bb lint --help`), and startup stays under a second. Relative `--file` paths resolve from the repo directory.
+`bb lint` takes every proserunner command and flag (`bb lint --help`), and startup stays under a second. Relative paths resolve from the repo directory.
 
 ## Run with Clojure
 
@@ -45,7 +45,7 @@ Use the Clojure CLI directly. It runs on the JVM, so startup takes a few seconds
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git
 cd proserunner
-clojure -M:run --file /path/to/file.md
+clojure -M:run /path/to/file.md
 ```
 
 **You'll need:**
@@ -61,9 +61,9 @@ Grab one from [releases](https://github.com/jeff-bruemmer/proserunner/releases),
 
 ```bash
 rm ~/.local/bin/proserunner           # or: sudo rm /usr/local/bin/proserunner
-rm -rf ~/.proserunner                 # Config, checks, and global ignores
+rm -rf ~/.config/proserunner          # Config, checks, global ignores, and backups
 rm -rf ~/.cache/proserunner           # Cache (see docs/usage.md#cache if you moved it)
-rm -rf ~/.proserunner-backup-*        # Backups made by --restore-defaults
+rm -rf ~/.proserunner ~/.proserunner-backup-*   # Left by releases before 0.8, if present
 ```
 
 If `bb install` added `~/.local/bin` to your PATH, remove the line after `# Added by proserunner installer` from your shell config (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).

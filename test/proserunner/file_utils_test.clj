@@ -255,3 +255,35 @@
         (is (some? (file-utils/delete-tree! tree))))
       (finally
         (file-utils/delete-tree! base)))))
+
+(deftest call-with-lock-test
+  (let [lock (str @test-dir File/separator "sub" File/separator ".lock")
+        counter (io/file @test-dir "counter")]
+    (testing "updates under the lock don't interleave"
+      (spit counter "0")
+      (->> (range 20)
+           (mapv (fn [_]
+                   (future
+                     (file-utils/call-with-lock
+                      lock
+                      #(let [n (parse-long (slurp counter))]
+                         (Thread/sleep 1)
+                         (spit counter (str (inc n))))))))
+           (run! deref))
+      (is (= "20" (slurp counter))))
+
+    (testing "creates the lock file's directory"
+      (is (.exists (io/file lock))))
+
+    (testing "nested calls don't deadlock"
+      (is (= :ok (file-utils/call-with-lock
+                  lock #(file-utils/call-with-lock lock (constantly :ok))))))
+
+    (testing "returns f's value and rethrows its exceptions"
+      (is (= 42 (file-utils/call-with-lock lock (constantly 42))))
+      (is (thrown-with-msg? Exception #"boom"
+                            (file-utils/call-with-lock lock #(throw (Exception. "boom"))))))
+
+    (testing "runs unlocked when the lock file can't be created"
+      (is (= :ran (file-utils/call-with-lock "/proc/proserunner-cannot-write/.lock"
+                                             (constantly :ran)))))))

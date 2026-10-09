@@ -10,7 +10,7 @@
             [proserunner.config :as config]
             [proserunner.config.loader]
             [proserunner.result :as result]
-            [proserunner.test-helpers :refer [silently with-temp-dir with-user-home]]))
+            [proserunner.test-helpers :refer [silently with-temp-dir with-temp-dirs with-user-home]]))
 
 (deftest fetch-or-create-input-validation-test
   (testing "Throws on non-string config-filepath"
@@ -55,8 +55,8 @@
       (is (string? docstring))
       (is (re-find #"project" docstring)
           "Documents project config behavior")
-      (is (re-find #"update" docstring)
-          "Documents update checking"))))
+      (is (re-find #"--restore-defaults|checks restore" docstring)
+          "Documents how checks get updated"))))
 
 ;;;; Installing default checks
 
@@ -72,14 +72,17 @@
         (.closeEntry zip)))
     (.toByteArray out)))
 
-(defn- fake-github
-  "Stands in for http/get: serves `zip` as the archive and fails the
-  version lookup, which is optional."
-  [zip]
-  (fn [url & _]
-    (if (= url config/remote-address)
-      {:status 200 :body zip}
-      {:status 404})))
+(defmacro ^:private with-archive
+  "Runs body with http/get serving `zip` as the pinned default checks, and
+  the pinned checksum set to match it. Other URLs get a 404."
+  [zip & body]
+  `(let [zip# ~zip]
+     (with-redefs [http/get (fn [url# & _#]
+                              (if (= url# config/remote-address)
+                                {:status 200 :body zip#}
+                                {:status 404}))
+                   config/default-checks-sha256 (config/archive-digest zip#)]
+       ~@body)))
 
 (defn- write! [dir path content]
   (let [f (io/file dir path)]
@@ -92,6 +95,11 @@
   (filter #(str/starts-with? (.getName ^java.io.File %) ".tmp-")
           (.listFiles (io/file dir))))
 
+(defn- config-dir
+  "Where the global config lives under the test `home`."
+  [home]
+  (io/file home ".config" "proserunner"))
+
 (def ^:private archive
   {"default/new.edn" "new"
    "config.edn" "theirs"
@@ -102,22 +110,24 @@
 (deftest restore-defaults-keeps-user-files-test
   (with-temp-dir [home "proserunner-restore"]
     (with-user-home home
-      (let [dir (io/file home ".proserunner")]
+      (let [dir (config-dir home)]
         (write! dir "config.edn" "my config")
         (write! dir "ignore.edn" "my ignores")
         (write! dir "custom/mine.edn" "mine")
         (write! dir "default/old.edn" "old")
-        (with-redefs [http/get (fake-github (zip-bytes archive))]
+        (with-archive (zip-bytes archive)
           (is (result/success? (silently (config/restore-defaults!)))))
 
         (testing "default/ is replaced"
           (is (= "new" (slurp (io/file dir "default/new.edn"))))
           (is (not (.exists (io/file dir "default/old.edn")))))
 
-        (testing "the old default/ is backed up"
+        (testing "the old default/ is backed up inside the config directory"
           (is (some #(.exists (io/file ^java.io.File % "old.edn"))
-                    (filter #(str/starts-with? (.getName ^java.io.File %) ".proserunner-backup-")
-                            (.listFiles (io/file home))))))
+                    (.listFiles (io/file dir "backups"))))
+          (is (empty? (filter #(str/starts-with? (.getName ^java.io.File %) ".proserunner-backup-")
+                              (.listFiles (io/file home))))
+              "nothing is added to the home directory"))
 
         (testing "config, ignores, and custom checks are kept"
           (is (= "my config" (slurp (io/file dir "config.edn"))))
@@ -128,38 +138,84 @@
           (is (= "example" (slurp (io/file dir "custom/example.edn"))))
           (is (= "readme" (slurp (io/file dir "README.md")))))
 
+        (testing "the installed commit is recorded"
+          (is (= config/default-checks-ref (slurp (io/file dir ".version")))))
+
         (is (empty? (tmp-dirs dir)) "no temporary directories left")))))
 
 (deftest restore-defaults-fresh-install-test
   (with-temp-dir [home "proserunner-fresh"]
     (with-user-home home
-      (with-redefs [http/get (fake-github (zip-bytes archive))]
+      (with-archive (zip-bytes archive)
         (is (result/success? (silently (config/restore-defaults!)))))
-      (let [dir (io/file home ".proserunner")]
+      (let [dir (config-dir home)]
         (is (= "new" (slurp (io/file dir "default/new.edn"))))
         (is (re-find #"\"new\"" (slurp (io/file dir "config.edn")))
             "config.edn is generated from the installed checks, not taken from the archive")
         (is (not (.exists (io/file dir "ignore.edn")))
-            "ignore.edn comes from ensure-global-config!, not the archive")))))
+            "ignore.edn comes from ensure-global-config!, not the archive")
+        (is (not (.exists (io/file home ".proserunner")))
+            "nothing is written to the legacy location")))))
+
+(deftest default-checks-are-pinned-test
+  (testing "the download is a fixed commit, not a branch"
+    (is (re-matches #"[0-9a-f]{40}" config/default-checks-ref))
+    (is (str/includes? config/remote-address config/default-checks-ref))
+    (is (not (str/includes? config/remote-address "main.zip")))
+    (is (re-matches #"[0-9a-f]{64}" config/default-checks-sha256))))
+
+(deftest archive-digest-test
+  (testing "the digest covers paths and contents, not GitHub's top-level directory name"
+    (let [entries {"default/a.edn" "a" "README.md" "r"}
+          zip-under (fn [top]
+                      (let [out (java.io.ByteArrayOutputStream.)]
+                        (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                          (.putNextEntry zip (java.util.zip.ZipEntry. (str top "/")))
+                          (.closeEntry zip)
+                          (doseq [[path ^String content] entries]
+                            (.putNextEntry zip (java.util.zip.ZipEntry. (str top "/" path)))
+                            (.write zip (.getBytes content "UTF-8"))
+                            (.closeEntry zip)))
+                        (.toByteArray out)))]
+      (is (= (config/archive-digest (zip-under "proserunner-default-checks-main"))
+             (config/archive-digest (zip-under "proserunner-default-checks-abc123"))))
+      (is (not= (config/archive-digest (zip-bytes entries))
+                (config/archive-digest (zip-bytes (assoc entries "default/a.edn" "b"))))
+          "changing a file changes the digest")
+      (is (not= (config/archive-digest (zip-bytes {"a" "bc"}))
+                (config/archive-digest (zip-bytes {"ab" "c"})))
+          "paths and contents can't run together"))))
+
+(deftest checksum-mismatch-installs-nothing-test
+  (with-temp-dir [home "proserunner-checksum"]
+    (with-user-home home
+      (let [dir (config-dir home)]
+        (write! dir "default/old.edn" "old")
+        (with-redefs [http/get (fn [& _] {:status 200 :body (zip-bytes {"default/evil.edn" "evil"})})]
+          (let [r (silently (config/restore-defaults!))]
+            (is (result/failure? r))
+            (is (re-find #"don't match the checksum" (:error r)))))
+        (is (= "old" (slurp (io/file dir "default/old.edn"))))
+        (is (not (.exists (io/file dir "default/evil.edn"))))))))
 
 (deftest interrupted-download-changes-nothing-test
   (with-temp-dir [home "proserunner-interrupted"]
     (with-user-home home
-      (let [dir (io/file home ".proserunner")
+      (let [dir (config-dir home)
             real-copy @#'config/copy!
             copies (atom 0)]
         (write! dir "config.edn" "my config")
         (write! dir "default/old.edn" "old")
-        (with-redefs [http/get (fake-github (zip-bytes {"default/a.edn" "a"
-                                                        "default/b.edn" "b"
-                                                        "config.edn" "theirs"}))
-                      config/copy! (fn [& args]
-                                     (when (= 2 (swap! copies inc))
-                                       (throw (java.io.IOException. "No space left on device")))
-                                     (apply real-copy args))]
-          (let [r (silently (config/restore-defaults!))]
-            (is (result/failure? r))
-            (is (re-find #"No space left" (:error r)))))
+        (with-archive (zip-bytes {"default/a.edn" "a"
+                                  "default/b.edn" "b"
+                                  "config.edn" "theirs"})
+          (with-redefs [config/copy! (fn [& args]
+                                       (when (= 2 (swap! copies inc))
+                                         (throw (java.io.IOException. "No space left on device")))
+                                       (apply real-copy args))]
+            (let [r (silently (config/restore-defaults!))]
+              (is (result/failure? r))
+              (is (re-find #"No space left" (:error r))))))
         (is (= "old" (slurp (io/file dir "default/old.edn"))))
         (is (not (.exists (io/file dir "default/a.edn"))))
         (is (= "my config" (slurp (io/file dir "config.edn"))))
@@ -168,11 +224,11 @@
 (deftest killed-download-is-cleaned-up-next-time-test
   (with-temp-dir [home "proserunner-killed"]
     (with-user-home home
-      (let [dir (io/file home ".proserunner")]
+      (let [dir (config-dir home)]
         ;; What a run killed mid-extraction leaves behind
         (write! dir ".tmp-123/default/partial.edn" "partial")
         (write! dir "default/old.edn" "old")
-        (with-redefs [http/get (fake-github (zip-bytes archive))]
+        (with-archive (zip-bytes archive)
           (is (result/success? (silently (config/restore-defaults!)))))
         (is (empty? (tmp-dirs dir)))
         (is (= "new" (slurp (io/file dir "default/new.edn"))))))))
@@ -180,7 +236,8 @@
 (deftest archive-entries-cannot-escape-test
   (with-temp-dir [home "proserunner-zipslip"]
     (with-user-home home
-      (with-redefs [http/get (fake-github (zip-bytes {"../../evil.txt" "evil"}))]
+      ;; Even an archive that passes the checksum can't write outside
+      (with-archive (zip-bytes {"../../evil.txt" "evil"})
         (let [r (silently (config/restore-defaults!))]
           (is (result/failure? r))
           (is (re-find #"Refusing to extract" (:error r)))))
@@ -194,6 +251,52 @@
           (let [r (silently (config/restore-defaults!))]
             (is (result/failure? r))
             (is (re-find #"Couldn't download from github\.com \(ConnectException\)" (:error r)))))))))
+
+;;;; Moving ~/.proserunner to the XDG config directory
+
+(deftest migrate-legacy-config-test
+  (testing "~/.proserunner moves to ~/.config/proserunner, contents and all"
+    (with-temp-dir [home "proserunner-migrate"]
+      (with-user-home home
+        (write! (io/file home ".proserunner") "ignore.edn" "my ignores")
+        (write! (io/file home ".proserunner") "custom/mine.edn" "mine")
+        (let [err (with-out-str (binding [*err* *out*] (config/ensure-global-config!)))]
+          (is (re-find #"Moved ~/\.proserunner to ~/\.config/proserunner" err)))
+        (is (not (.exists (io/file home ".proserunner"))))
+        (is (= "my ignores" (slurp (io/file (config-dir home) "ignore.edn"))))
+        (is (= "mine" (slurp (io/file (config-dir home) "custom/mine.edn"))))
+        (is (= (str (config-dir home)) (proserunner.system/config-dir))))))
+
+  (testing "$XDG_CONFIG_HOME is honored"
+    (with-temp-dirs [[home "proserunner-migrate-home"]
+                     [xdg "proserunner-xdg"]]
+      (with-user-home home
+        (with-redefs [proserunner.system/xdg-config-home (constantly xdg)]
+          (write! (io/file home ".proserunner") "ignore.edn" "my ignores")
+          (silently (config/ensure-global-config!))
+          (is (= "my ignores" (slurp (io/file xdg "proserunner" "ignore.edn"))))))))
+
+  (testing "a failed move keeps using ~/.proserunner and says how to move it"
+    (with-temp-dir [home "proserunner-migrate-fail"]
+      (with-user-home home
+        (write! (io/file home ".proserunner") "ignore.edn" "my ignores")
+        (with-redefs [config/move! (fn [& _] (throw (java.nio.file.AtomicMoveNotSupportedException.
+                                                      "a" "b" "different filesystems")))]
+          (let [err (with-out-str (binding [*err* *out*] (config/ensure-global-config!)))]
+            (is (re-find #"mv ~/\.proserunner ~/\.config/proserunner" err))))
+        (is (= (str (io/file home ".proserunner")) (proserunner.system/config-dir)))
+        (is (= "my ignores" (slurp (io/file home ".proserunner" "ignore.edn"))))
+        (is (not (.exists (config-dir home)))))))
+
+  (testing "when both exist, the XDG one wins and the old one is left alone"
+    (with-temp-dir [home "proserunner-migrate-both"]
+      (with-user-home home
+        (write! (io/file home ".proserunner") "ignore.edn" "old")
+        (write! (config-dir home) "ignore.edn" "new")
+        (let [err (with-out-str (binding [*err* *out*] (config/ensure-global-config!)))]
+          (is (re-find #"Both ~/\.proserunner and ~/\.config/proserunner exist" err)))
+        (is (= "old" (slurp (io/file home ".proserunner" "ignore.edn"))))
+        (is (= (str (config-dir home)) (proserunner.system/config-dir)))))))
 
 ;;;; Proxies
 

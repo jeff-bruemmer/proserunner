@@ -15,6 +15,7 @@
              [project-config :as project-conf]
              [result :as result]
              [scope :as scope]
+             [system :as sys]
              [vet :as vet]]
             [proserunner.ignore.audit :as ignore-audit]
             [proserunner.ignore.context :as ignore-context]
@@ -110,10 +111,10 @@
       #(update % :ignore conj \"new-pattern\")
       {:project false})"
   [update-fn opts]
-  (let [current-ignores (read-ignores-by-scope opts)
-        updated-ignores (update-fn current-ignores)]
-    (write-ignores-by-scope! updated-ignores opts)
-    updated-ignores))
+  (sys/call-with-config-lock
+   #(let [updated-ignores (update-fn (read-ignores-by-scope opts))]
+      (write-ignores-by-scope! updated-ignores opts)
+      updated-ignores)))
 
 
 (defn- extract-prepped-issues
@@ -183,7 +184,7 @@
    {}))
 
 (def clear-without-force-warning
-  (str "In a future release, --clear-ignored will need --force when not run in a terminal. "
+  (str "In a future release, 'ignore clear' will need --force when not run in a terminal. "
        "Add --force now to keep this working."))
 
 (defmethod execute-effect :ignore/clear
@@ -288,13 +289,14 @@
 (defmethod execute-effect :ignore/clean
   [[_ opts]]
   (effect-wrapper
-   #(let [ignores (read-ignores-by-scope opts)
-          cleaned-ignores (ignore-audit/remove-stale ignores)
-          removed-count (- (count (:ignore-issues ignores))
-                           (count (:ignore-issues cleaned-ignores)))
+   #(let [removed-count (sys/call-with-config-lock
+                         (fn []
+                           (let [ignores (read-ignores-by-scope opts)
+                                 cleaned-ignores (ignore-audit/remove-stale ignores)]
+                             (write-ignores-by-scope! cleaned-ignores opts)
+                             (- (count (:ignore-issues ignores))
+                                (count (:ignore-issues cleaned-ignores))))))
           {:keys [msg-context] :as target-info} (scope/get-target-info opts)]
-      ;; Write cleaned ignores
-      (write-ignores-by-scope! cleaned-ignores opts)
       (console/status (format "Removed %d stale ignore(s) from %s ignore list."
                               removed-count
                               msg-context))

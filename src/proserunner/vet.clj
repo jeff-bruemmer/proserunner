@@ -5,7 +5,8 @@
   (:require
    [proserunner
     [storage :as store]
-    [result :as result]]
+    [result :as result]
+    [text :as text]]
    [proserunner.vet
     [cache :as cache]
     [processor :as processor]
@@ -59,6 +60,10 @@
             {:keys [cached-result output]} inputs
             results
             (cond
+              ;; Standard input has no path to cache it under
+              (text/stdin? (:file options))
+              (compute inputs)
+
               (:no-cache inputs)
               (compute-and-store inputs options)
 

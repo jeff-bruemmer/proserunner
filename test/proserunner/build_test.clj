@@ -4,7 +4,7 @@
             [clojure.java.io :as io]
             [clojure.java.shell :as shell]
             [clojure.string :as str]
-            [proserunner.test-helpers :refer [with-temp-dir]]))
+            [proserunner.test-helpers :refer [test-home with-temp-dir]]))
 
 ;;; Issue 1: bb.edn install task should check for proserunner
 
@@ -39,6 +39,15 @@
 (def ^:dynamic *binary-path* "./proserunner")
 (def ^:dynamic *build-output* nil)
 
+(defn- run-binary
+  "Runs the binary with the test run's throwaway home, so it never reads
+  or migrates the real config. Native images take -D at runtime."
+  [& args]
+  (let [env (assoc (into {} (System/getenv))
+                   "XDG_CONFIG_HOME" (str test-home "/.config"))]
+    (apply shell/sh *binary-path* (str "-Duser.home=" test-home)
+           (concat args [:env env]))))
+
 (deftest test-binary-exists
   (testing "Native image binary exists"
     (is (.exists (io/file *binary-path*))
@@ -51,13 +60,13 @@
 
 (deftest test-binary-runs
   (testing "Native image binary executes successfully"
-    (let [{:keys [exit]} (shell/sh *binary-path* "--version")]
+    (let [{:keys [exit]} (run-binary "--version")]
       (is (= 0 exit)
           "Binary should exit with status 0"))))
 
 (deftest test-version-flag
   (testing "Binary responds to --version flag"
-    (let [{:keys [exit out]} (shell/sh *binary-path* "--version")]
+    (let [{:keys [exit out]} (run-binary "--version")]
       (is (= 0 exit) "Version command should succeed")
       (is (not (str/blank? out)) "Version output should not be empty")
       (is (re-find #"\d+\.\d+\.\d+" out)
@@ -65,14 +74,14 @@
 
 (deftest test-help-flag
   (testing "Binary responds to --help flag"
-    (let [{:keys [exit out]} (shell/sh *binary-path* "--help")]
+    (let [{:keys [exit out]} (run-binary "--help")]
       (is (= 0 exit) "Help command should succeed")
       (is (or (str/includes? out "Usage:") (str/includes? out "USAGE:"))
           "Help output should contain usage information"))))
 
 (deftest test-no-classloader-errors
   (testing "Binary doesn't fail with ClassLoader errors"
-    (let [{:keys [exit err]} (shell/sh *binary-path* "--version")]
+    (let [{:keys [exit err]} (run-binary "--version")]
       (is (= 0 exit) "Command should succeed")
       (is (not (str/includes? err "Could not locate clojure/core__init.class"))
           "Should not have Clojure init class errors")
@@ -82,8 +91,8 @@
 (deftest test-basic-functionality
   (testing "Binary can process a simple markdown file"
     (let [test-file "resources/benchmark-data/small.md"
-          ;; -n skips the cache so the file is actually linted
-          result (shell/sh *binary-path* "-n" test-file)
+          ;; --no-cache so the file is actually linted
+          result (run-binary "--no-cache" test-file)
           {:keys [exit out err]} result]
       (is (= 1 exit)
           "Lint run should exit 1 (issues found; small.md has known issues)")

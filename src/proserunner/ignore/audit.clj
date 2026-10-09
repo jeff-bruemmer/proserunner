@@ -55,7 +55,7 @@
              (:ignore-issues stale))
         [""]
         [(format "Stale ignores reference files that no longer exist.")]
-        [(format "Use --clean-ignores to remove them.")])))))
+        [(format "Run 'proserunner ignore clean' to remove them.")])))))
 
 (defn remove-stale
   "Removes stale ignores from an ignore map.

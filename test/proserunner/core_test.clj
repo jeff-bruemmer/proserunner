@@ -1,10 +1,14 @@
 (ns proserunner.core-test
   "Tests for core CLI entry point and command dispatch."
   (:require [clojure.test :refer [deftest is testing]]
+            [editors.re :as re]
+            [editors.registry :as registry]
+            [editors.repetition :as repetition]
+            [editors.utilities :as util]
             [proserunner.core :as core]
             [proserunner.effects]
             [proserunner.result :as result]
-            [proserunner.test-helpers :refer [silently]]))
+            [proserunner.test-helpers :refer [silently with-temp-dir with-user-home]]))
 
 ;; Note: Many error paths in core/reception call System/exit directly
 ;; and cannot be easily tested until we refactor to use result/result-or-exit.
@@ -174,3 +178,86 @@
         (let [options (core/reception ["--output" "json" "--version"])]
           (is (some? options))
           (is (= "json" (:output options))))))))
+
+(deftest deprecated-flags-warn-test
+  (testing "old action flags still run, with a warning naming the command"
+    (with-redefs [proserunner.effects/execute-command-result (fn [_] (result/ok nil))]
+      (let [{:keys [options err]} (run-reception ["--list-ignored"])]
+        (is (= 0 (:exit-code options)))
+        (is (true? (:list-ignored options)))
+        (is (re-find #"--list-ignored is deprecated; use 'proserunner ignore list' instead\." err))))))
+
+(deftest command-errors-exit-2-test
+  (testing "a bad command exits 2 without running anything"
+    (let [{:keys [options out err bootstrapped?]} (run-reception ["ignore" "add"])]
+      (is (= 2 (:exit-code options)))
+      (is (= "" out))
+      (is (re-find #"needs a SPECIMEN" err))
+      (is (false? bootstrapped?))))
+
+  (testing "a mistyped command gets a suggestion"
+    (let [{:keys [options err]} (run-reception ["ignroe" "add" "x"])]
+      (is (= 2 (:exit-code options)))
+      (is (re-find #"ignroe: no such file or directory\. Did you mean the 'ignore' command\?" err)))))
+
+(deftest command-help-test
+  (testing "help COMMAND prints that command's help without touching the config"
+    (let [{:keys [options out bootstrapped?]} (run-reception ["help" "ignore"])]
+      (is (= 0 (:exit-code options)))
+      (is (re-find #"proserunner ignore add SPECIMEN" out))
+      (is (re-find #"--force" out))
+      (is (false? bootstrapped?))))
+
+  (testing "the main help lists commands, not deprecated flags"
+    (let [{:keys [out]} (run-reception ["--help"])]
+      (is (re-find #"COMMANDS:" out))
+      (is (re-find #"--quiet" out))
+      (is (not (re-find #"--add-ignore|--restore-defaults|--init-project" out))))))
+
+(defn- register-editors!
+  "Other tests clear the editor registry; linting for real needs it full."
+  []
+  (doseq [editor-type (util/standard-editor-types)]
+    (registry/register-editor! editor-type (util/create-editor editor-type)))
+  (registry/register-editor! "repetition" repetition/proofread)
+  (registry/register-editor! "regex" re/proofread))
+
+(deftest stdin-test
+  (register-editors!)
+  (testing "- checks standard input, labeled <stdin>"
+    (let [out (java.io.StringWriter.)
+          err (java.io.StringWriter.)
+          options (binding [*in* (java.io.BufferedReader.
+                                  (java.io.StringReader. "This software program is quick as lightning.\n"))
+                            *out* out
+                            *err* err]
+                    (core/reception ["-" "-o" "plain"]))]
+      (is (= 1 (:exit-code options)) (str err))
+      (is (re-find #"(?m)^<stdin>:1:" (str out)))))
+
+  (testing "ignoring issues by number needs a file"
+    (let [{:keys [options err]} (run-reception ["-" "--ignore-issues" "1"])]
+      (is (= 2 (:exit-code options)))
+      (is (re-find #"can't be used with standard input" err)))))
+
+(deftest first-run-after-moving-the-config-test
+  (register-editors!)
+  (testing "a check right after ~/.proserunner moves uses the moved config"
+    (with-temp-dir [home "proserunner-first-run"]
+      (with-user-home home
+        (let [legacy (java.io.File. home ".proserunner")
+              doc (java.io.File. home "doc.md")
+              out (java.io.StringWriter.)
+              err (java.io.StringWriter.)]
+          (.mkdirs (java.io.File. legacy "default"))
+          (spit (java.io.File. legacy "config.edn")
+                (pr-str {:checks [{:name "default" :directory "default" :files ["tics"]}]}))
+          (spit (java.io.File. legacy "default/tics.edn")
+                (pr-str {:name "tics" :kind "existence" :message "A tic."
+                         :specimens ["zorbly"]}))
+          (spit doc "Truly zorbly.\n")
+          (let [options (binding [*out* out *err* err]
+                          (core/reception [(.getPath doc) "-o" "plain" "--no-cache"]))]
+            (is (= 1 (:exit-code options)) (str err))
+            (is (re-find #"zorbly" (str out)))
+            (is (re-find #"Moved ~/\.proserunner" (str err)))))))))

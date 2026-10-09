@@ -74,7 +74,7 @@
       (is (.exists (io/file (:target-dir result) "test2.edn")))
 
       ;; Verify config was updated
-      (let [config-path (sys/filepath ".proserunner" "config.edn")
+      (let [config-path (sys/config-path "config.edn")
             config (edn/read-string (slurp config-path))]
         (is (= 1 (count (:checks config))))
         (is (= "Custom checks: source-checks" (-> config :checks first :name)))
@@ -97,7 +97,7 @@
       (is (.exists (io/file (:target-dir result) "check.edn")))
 
       ;; Verify config uses custom name
-      (let [config-path (sys/filepath ".proserunner" "config.edn")
+      (let [config-path (sys/config-path "config.edn")
             config (edn/read-string (slurp config-path))]
         (is (= "custom/my-custom-name" (-> config :checks first :directory)))))))
 
@@ -122,7 +122,7 @@
                   "{:name \"new\" :kind \"existence\" :specimens []}")
 
           ;; Create initial config with existing entry
-          config-path (sys/filepath ".proserunner" "config.edn")
+          config-path (sys/config-path "config.edn")
           _ (spit config-path
                   "{:checks [{:name \"Custom checks: update-test\"
                               :directory \"custom/update-test\"
@@ -305,7 +305,7 @@
           _ (custom/add-checks source-dir {:global true})
 
           ;; Verify global config updated
-          config-path (sys/filepath ".proserunner" "config.edn")
+          config-path (sys/config-path "config.edn")
           config (edn/read-string (slurp config-path))]
       (is (some #(= "custom/global-checks" (:directory %)) (:checks config))))))
 

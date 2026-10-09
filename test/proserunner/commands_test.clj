@@ -459,7 +459,7 @@
     (is (nil? (cmd/conflicting-actions-warning {:paths ["a.md"]})))
     (is (nil? (cmd/conflicting-actions-warning {:list-ignored true}))))
   (testing "names the action that runs and the ones ignored"
-    (is (= "Only one action runs at a time: running --list-ignored, ignoring PATH."
+    (is (= "Only one action runs at a time: running 'ignore list', ignoring 'check PATH'."
            (cmd/conflicting-actions-warning {:list-ignored true :file "a.md"}))))
   (testing "--ignore-issues with a PATH is a valid pair"
     (is (nil? (cmd/conflicting-actions-warning {:ignore-issues "1" :paths ["a.md"]}))))

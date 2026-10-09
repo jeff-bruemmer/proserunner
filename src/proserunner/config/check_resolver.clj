@@ -73,8 +73,8 @@
   "Finds a global check entry that matches the given directory name.
    Returns the check entry with absolute paths, or nil if not found."
   [dir-name global-checks]
-  ;; Empty string gets us base ~/.proserunner/ directory
-  (let [global-proserunner-dir (sys/filepath ".proserunner" "")]
+  ;; Empty string gets us the global config directory, with a trailing separator
+  (let [global-proserunner-dir (sys/config-path "")]
     (when-let [check (first (filter #(= (:directory %) dir-name) global-checks))]
       (update check :directory #(make-directory-absolute % global-proserunner-dir)))))
 

@@ -37,7 +37,7 @@ Clone the repo, `cd` into it, then pick one:
 bb install                          # Installs to ~/.local/bin (open a new shell if it wasn't on your PATH)
 proserunner document.md             # Check a file, from anywhere
 proserunner docs/ README.md         # Check several paths
-proserunner --init-project          # Set up project config
+proserunner init                    # Set up project config
 
 # Option 2: Babashka only (no build, no Java); run from the repo
 bb lint /path/to/document.md        # Same flags as proserunner
@@ -59,6 +59,7 @@ proserunner docs/ -o plain   # Fails the build on issues; one issue per line in 
 ## Why it's useful
 
 - **Numbered issues** - Ignore specific problems by number: `--ignore-issues 1,3,5`. Numbers are for the current run.
+- **Pipes** - `proserunner -` checks standard input, so it fits after pandoc or your clipboard.
 - **Customizable** - Add checks as EDN files. Toggle them on/off without touching code.
 - **Fast** - Parallel processing, smart caching.
 - **Flexible** - Output formats: grouped, plain (one issue per line), table, JSON, EDN, verbose.
@@ -67,7 +68,7 @@ proserunner docs/ -o plain   # Fails the build on issues; one issue per line in 
 
 ## What it checks
 
-Ships with 22 checks (run `proserunner --checks` to see yours):
+Ships with 22 checks (run `proserunner checks` to see yours):
 
 | Name               | Kind        | Explanation                                                                                     |
 | ------------------ | ----------- | ----------------------------------------------------------------------------------------------- |
@@ -98,7 +99,7 @@ Ships with 22 checks (run `proserunner --checks` to see yours):
 
 ## Customizing checks
 
-**Turn off checks** - Edit `~/.proserunner/config.edn`:
+**Turn off checks** - Edit `~/.config/proserunner/config.edn` (or `$XDG_CONFIG_HOME/proserunner/`):
 
 ```clojure
 {:checks
@@ -111,15 +112,16 @@ Ships with 22 checks (run `proserunner --checks` to see yours):
 
 **Add custom checks** - Drop `.edn` files in:
 
-- Global: `~/.proserunner/custom/`
+- Global: `~/.config/proserunner/custom/`
 - Project: `.proserunner/checks/`
 
-Or use: `proserunner --add-checks ~/my-checks`
+Or use: `proserunner checks add ~/my-checks`
 
 See [Usage docs](docs/usage.md#custom-checks) for check examples.
 
 ## Docs
 
 - [Installation](docs/installation.md) - Build and install
-- [Usage](docs/usage.md) - Checks, config, ignores
+- [Usage](docs/usage.md) - Commands, checks, config, ignores
+- [Upgrading from 0.7](docs/usage.md#upgrading-from-07) - Commands replaced the action flags, and config moved to `~/.config/proserunner`
 - [Architecture](docs/architecture.md) - How it works
