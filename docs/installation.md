@@ -2,7 +2,7 @@
 
 ## Native binary (fastest)
 
-Builds a ~20MB binary with ~50ms startup:
+Builds a ~65MB standalone binary with ~50ms startup:
 
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git
@@ -14,7 +14,7 @@ bb install  # Builds and installs to ~/.local/bin
 
 - Babashka
 - GraalVM 25+ with native-image
-- 8GB RAM for building
+- Clojure CLI
 
 **Build commands:**
 
@@ -24,9 +24,23 @@ bb install           # Build + install to ~/.local/bin
 bb install-system    # Install to /usr/local/bin (needs sudo)
 ```
 
-## Run without installing
+## Babashka
 
-Just use Clojure directly:
+Run proserunner straight from the repo with Babashka:
+
+```bash
+git clone https://github.com/jeff-bruemmer/proserunner.git
+cd proserunner
+bb lint --file /path/to/file-or-dir
+```
+
+- Babashka
+
+`bb lint` takes every proserunner flag (`bb lint --help`), and startup stays under a second. Relative `--file` paths resolve from the repo directory.
+
+## Run with Clojure
+
+Use the Clojure CLI directly. It runs on the JVM, so startup takes a few seconds:
 
 ```bash
 git clone https://github.com/jeff-bruemmer/proserunner.git
