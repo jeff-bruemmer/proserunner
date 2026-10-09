@@ -2,24 +2,11 @@
  {org.clojure/clojure #:mvn{:version "1.12.0"},
   org.clojure/tools.cli #:mvn{:version "0.4.1"},
   org.babashka/http-client #:mvn{:version "0.4.22"},
-  cheshire/cheshire #:mvn{:version "5.13.0"},
-  com.github.clj-easy/graal-build-time #:mvn{:version "1.0.5"}},
+  cheshire/cheshire #:mvn{:version "5.13.0"}},
  :paths ["src" "classes" "resources"],
  :aliases
  {:run
   {:main-opts ["-m" "proserunner.core"]}
-
-  ;; Native image build aliases
-  ;; Note: These aliases share common configuration but deps.edn doesn't support
-  ;; alias composition, so some duplication is necessary for clarity.
-
-  ;; Compile alias - prepares classes for native-image
-  :compile
-  {:main-opts ["-e" "(do (require 'proserunner.core) (compile 'proserunner.core))"]}
-
-  ;; Native image build configuration (no wrapper needed)
-  :native-image
-  {:extra-deps {com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}},
 
   :test
   {:extra-paths ["test"],

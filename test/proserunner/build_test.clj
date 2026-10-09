@@ -34,7 +34,7 @@
       (is (not (str/includes? build-content "\"clojure -M \""))
           "Build command should not have space before alias colon"))))
 
-;;; Native Image Build Verification Tests (graal-build-time integration)
+;;; Native Image Build Verification Tests
 
 (def ^:dynamic *binary-path* "./proserunner")
 (def ^:dynamic *build-output* nil)
@@ -82,10 +82,15 @@
 (deftest test-basic-functionality
   (testing "Binary can process a simple markdown file"
     (let [test-file "resources/benchmark-data/small.md"
-          result (shell/sh *binary-path* "check" test-file)
-          {:keys [exit err]} result]
-      (is (contains? #{0 1} exit)
-          "Check command should exit with 0 (pass) or 1 (fail), not crash")
+          ;; -n skips the cache so the file is actually linted
+          result (shell/sh *binary-path* "-n" "-f" test-file)
+          {:keys [exit out err]} result]
+      (is (= 0 exit)
+          "Lint run should succeed")
+      (is (str/includes? out test-file)
+          "Output should report on the checked file")
+      (is (re-find #"\[\d+\]\s+\d+:\d+" out)
+          "Output should contain at least one issue (small.md has known issues)")
       (is (not (str/includes? err "Could not locate"))
           "Should not have class loading errors")
       (is (not (str/includes? err "Exception"))
