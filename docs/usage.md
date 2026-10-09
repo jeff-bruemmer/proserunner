@@ -12,7 +12,7 @@ proserunner docs/ README.md        # Several paths, or a shell glob like *.md
 # document.md
 # [1]  10:5   "utilize"  -> Consider using "use" instead.
 # [2]  15:12  "leverage" -> Consider using "use" instead.
-# Checked 1 file, found 2 issues.   (on stderr)
+# Found 2 issues.   (on stderr)
 
 # Ignore by number
 proserunner document.md --ignore-issues 1,3
@@ -99,7 +99,7 @@ Running `proserunner` with no arguments prints a short usage message; `proserunn
 
 ## Default checks
 
-Ships with 18 checks. See what's enabled: `proserunner checks`
+Ships with 22 checks. See what's enabled: `proserunner checks`
 
 Full list: [github.com/jeff-bruemmer/proserunner-default-checks](https://github.com/jeff-bruemmer/proserunner-default-checks)
 
@@ -112,7 +112,9 @@ Full list: [github.com/jeff-bruemmer/proserunner-default-checks](https://github.
 | Corporate-speak    | Existence   | Words and phrases that make you sound like an automaton.                                        |
 | Hedging            | Existence   | Say, or say not. There is no hedging.                                                           |
 | Jargon             | Existence   | Phrases infected with bureaucracy.                                                              |
+| Meta-discourse     | Existence   | Self-referential phrases that add no value.                                                     |
 | Needless-variant   | Recommender | Prefer the more common term.                                                                    |
+| Nominalization     | Recommender | Convert weak noun phrases back to strong verbs.                                                 |
 | Non-words          | Recommender | Identifies sequences of letters masquerading as words, and suggests an actual word.             |
 | Not the negative.  | Recommender | Prefer the word to the negation of the word's opposite.                                         |
 | Overused-adverbs   | Existence   | Use of adverbs that are weak or redundant. Consider using a stronger verb instead.              |
@@ -120,9 +122,11 @@ Full list: [github.com/jeff-bruemmer/proserunner-default-checks](https://github.
 | Phrasal adjectives | Recommender | Hyphenate phrasal adjectives.                                                                   |
 | Pompous-diction    | Recommender | Pompous diction: use simpler words. From Style: Toward Clarity and Grace by Joseph M. Williams. |
 | Redundancies       | Existence   | Avoid phrases that say the same thing more than once.                                           |
+| Regex              | Regex       | Raw regular expressions.                                                                        |
 | Repetition         | Repetition  | Catches consecutive repetition of words, like _the the_.                                        |
 | Sexism             | Existence   | Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_).                      |
 | Skunked-terms      | Existence   | Words with controversial correct usage that are best avoided.                                   |
+| Weasel-words       | Existence   | Vague phrases that avoid commitment and precision.                                              |
 
 ## Check types
 
@@ -188,7 +192,7 @@ proserunner checks restore
 
 Reinstalls the default checks and replaces `default/`, after copying the old one to `backups/`. Your `config.edn`, `ignore.edn`, and `custom/` checks are kept. If the download fails or is interrupted, your current checks stay in place; run it again.
 
-Each release of Proserunner is pinned to one version of the [default checks](https://github.com/jeff-bruemmer/proserunner-default-checks), and it verifies a checksum of what it downloads. So results never change under you: newer checks come with newer releases.
+Each release of Proserunner is pinned to one version of the [default checks](https://github.com/jeff-bruemmer/proserunner-default-checks), and it verifies a checksum of what it downloads. So results never change under you. Upgrading Proserunner doesn't replace checks you already have: after upgrading, run `proserunner checks restore` to get the checks the new release ships with.
 
 Behind a proxy? Downloads go through `HTTPS_PROXY` (or `ALL_PROXY`) and skip hosts listed in `NO_PROXY`, the same way curl does. Proxies that need a username and password aren't supported.
 
@@ -461,7 +465,7 @@ proserunner checks restore
 
 Backs up current, reinstalls the defaults, keeps your custom stuff.
 
-Default checks are downloaded from GitHub once, on first run. After that, Proserunner never contacts the network on its own, so results don't change between runs. Run `checks restore` if you've edited or broken the defaults and want them back. See [Restore default checks](#restore-default-checks).
+Default checks are downloaded from GitHub once, on first run. After that, Proserunner never contacts the network on its own, so results don't change between runs. Run `checks restore` after upgrading Proserunner, or if you've edited or broken the defaults and want them back. See [Restore default checks](#restore-default-checks).
 
 ## Environment variables
 

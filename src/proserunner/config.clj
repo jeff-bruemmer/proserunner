@@ -20,8 +20,10 @@
 (set! *warn-on-reflection* true)
 
 ;; Each release installs one fixed commit of the default checks, so a
-;; released binary never picks up checks it wasn't tested with. To ship
-;; new checks, run `bb pin-checks` and paste its output here.
+;; fresh install or `checks restore` never picks up checks the release
+;; wasn't tested with. Upgrading doesn't reinstall existing checks; .version
+;; records the installed ref so a later release can notice the mismatch.
+;; To ship new checks, run `bb pin-checks` and paste its output here.
 (def default-checks-ref "d4597fbf0f41f93b46511a2706c4e56c7bf6292b")
 (def default-checks-sha256 "53dcc123317e0341e61ec3ed9f1b018329d81818cde8620316a41e95b994871a")
 

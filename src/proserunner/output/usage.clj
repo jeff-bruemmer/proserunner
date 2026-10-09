@@ -3,13 +3,13 @@
   (:refer-clojure :exclude [print])
   (:gen-class)
   (:require [clojure.string :as string]
+            [proserunner.console :as console]
             [proserunner.system :as sys]
             [proserunner.version :as ver]))
 
 (set! *warn-on-reflection* true)
 
 (def docs-url "https://github.com/jeff-bruemmer/proserunner#readme")
-(def issues-url "https://github.com/jeff-bruemmer/proserunner/issues")
 
 (defn version
   "Prints version number."
@@ -116,7 +116,7 @@
   (println "  Project: .proserunner/config.edn")
   (println (str "  Current: " (some-> config sys/display-path)))
   (println "\nDocs:   " docs-url)
-  (println "Issues: " issues-url)
+  (println "Issues: " console/issues-url)
   (println)
   (version))
 

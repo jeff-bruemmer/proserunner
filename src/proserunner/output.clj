@@ -64,12 +64,12 @@
         (count final-results)))))
 
 (defn summary
-  "One line describing a run, e.g. \"Checked 2 files, found 5 issues.\""
-  [issue-count file-count]
-  (let [n (fn [count word] (str count " " word (when (not= 1 count) "s")))]
-    (str "Checked " (n file-count "file") ", found "
-         (if (zero? issue-count) "no issues" (n issue-count "issue"))
-         ".")))
+  "One line describing a run, e.g. \"Found 5 issues.\""
+  [issue-count]
+  (cond
+    (zero? issue-count) "No issues found."
+    (= 1 issue-count) "Found 1 issue."
+    :else (str "Found " issue-count " issues.")))
 
 ;; Re-export time-elapsed for backward compatibility with core.clj
 (def time-elapsed prep/time-elapsed)

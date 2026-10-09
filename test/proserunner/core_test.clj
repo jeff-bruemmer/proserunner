@@ -84,12 +84,12 @@
 (deftest exit-code-test
   (testing "issues found exits 1"
     (with-redefs [proserunner.effects/execute-command-result
-                  (fn [_] (result/ok [{:issue-count 3 :file-count 1}]))]
+                  (fn [_] (result/ok [{:issue-count 3}]))]
       (is (= 1 (-> (run-reception ["README.md"]) :options :exit-code)))))
 
   (testing "no issues exits 0"
     (with-redefs [proserunner.effects/execute-command-result
-                  (fn [_] (result/ok [{:issue-count 0 :file-count 1}]))]
+                  (fn [_] (result/ok [{:issue-count 0}]))]
       (is (= 0 (-> (run-reception ["README.md"]) :options :exit-code)))))
 
   (testing "a failed run exits 2"

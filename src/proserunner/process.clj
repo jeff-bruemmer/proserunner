@@ -20,17 +20,15 @@
   "Proserunner takes options and vets the given paths with the supplied checks.
   Prints the results, then a one-line summary to stderr for terminal formats.
 
-  Returns Result with {:issue-count :file-count}, or Failure on error."
+  Returns Result with {:issue-count}, or Failure on error."
   [options]
   (result/try-result-with-context
    (fn []
      (result/bind
       (vet/compute-paths options)
       (fn [payload]
-        (let [issue-count (output/out payload)
-              file-count (:file-count payload)]
+        (let [issue-count (output/out payload)]
           (when (summarized-formats (:output options))
-            (console/status (output/summary issue-count file-count)))
-          (result/ok {:issue-count issue-count
-                      :file-count file-count})))))
+            (console/status (output/summary issue-count)))
+          (result/ok {:issue-count issue-count})))))
    {:operation :process-file}))

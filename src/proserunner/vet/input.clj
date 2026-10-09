@@ -267,14 +267,3 @@
       (fn [{:keys [lines loaded-checks]}]
         (combine-loaded-data normalized lines loaded-checks
                             project-ignore project-ignore-issues)))))
-
-(defn count-files
-  "Number of files a check of `file` covers, after exclusions."
-  [file options]
-  (if (text/stdin? file)
-    1
-    (let [{:keys [exclude-patterns]} (normalize-input-options options)
-          files-result (filter-valid-files file (build-ignore-patterns file exclude-patterns))]
-      (if (result/success? files-result)
-        (count (:value files-result))
-        0))))

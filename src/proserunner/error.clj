@@ -1,10 +1,7 @@
 (ns proserunner.error
   "Utilities for error messages"
   (:gen-class)
-  (:require [proserunner.console :as console]
-            [proserunner.fmt :as fmt]
-            [proserunner.result :as result]
-            [clojure.string :as string]))
+  (:require [proserunner.console :as console]))
 
 (set! *warn-on-reflection* true)
 
@@ -57,7 +54,7 @@
            e))
        errors))
 
-;;;; Printing and exiting
+;;;; Printing
 
 (defn message
   "Prints `errors` to stderr, followed by a pointer to --help."
@@ -65,49 +62,3 @@
   (doseq [e errors]
     (console/error e))
   (console/warn help-hint))
-
-;; Result-returning alternatives (preferred for testability and composability)
-
-(defn message-result
-  "Returns a Result Failure containing error messages.
-
-  Alternative to `message` that returns a Result instead of printing.
-  Useful for testing and composable error handling.
-
-  Example:
-    (message-result [\"Error 1\" \"Error 2\"])
-    ;; => Failure with formatted error message"
-  [errors]
-  (result/err (str \newline (string/join \newline errors) \newline)
-              {:errors errors}))
-
-(defn exit-result
-  "Returns a Result Failure instead of exiting.
-
-  Alternative to `exit` that returns a Result for composable error handling.
-
-  Example:
-    (exit-result)
-    (exit-result \"Custom error message\")
-    (exit-result \"Error\" {:code 404})"
-  ([]
-   (result/err help-hint {}))
-  ([msg]
-   (result/err (str (fmt/sentence-dress msg) \newline help-hint)
-               {:message msg}))
-  ([msg context]
-   (result/err (str (fmt/sentence-dress msg) \newline help-hint)
-               (assoc context :message msg))))
-
-(defn inferior-input-result
-  "Returns a Result Failure for invalid input.
-
-  Alternative to `inferior-input` that returns a Result instead of exiting.
-  Enables testing and error recovery without process termination.
-
-  Example:
-    (inferior-input-result [\"Invalid option: --foo\"])
-    ;; => Failure with formatted error"
-  [errors]
-  (result/err (str "Invalid input:" \newline (string/join \newline errors))
-              {:errors errors}))

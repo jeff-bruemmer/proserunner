@@ -460,7 +460,6 @@
         (is (result/success? r))
         (let [payload (:value r)
               files (set (map :file (get-in payload [:results :results])))]
-          (is (= 2 (:file-count payload)))
           (is (some #(re-find #"drivel\.md$" %) files))
           (is (some #(re-find #"words\.md$" %) files)))
         (finally
