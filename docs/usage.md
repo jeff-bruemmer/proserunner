@@ -142,6 +142,16 @@ First run downloads checks to `~/.proserunner/`:
 └── default/        # Default checks
 ```
 
+### Update default checks
+
+```bash
+proserunner --restore-defaults
+```
+
+Downloads the latest default checks and replaces `default/`, after copying the old one to `~/.proserunner-backup-<timestamp>/`. Your `config.edn`, `ignore.edn`, and `custom/` checks are kept. If the download fails or is interrupted, your current checks stay in place; run it again.
+
+Behind a proxy? Downloads go through `HTTPS_PROXY` (or `ALL_PROXY`) and skip hosts listed in `NO_PROXY`, the same way curl does. Proxies that need a username and password aren't supported.
+
 ### Turn off checks
 
 Edit `~/.proserunner/config.edn`:
@@ -203,6 +213,8 @@ proserunner --clear-ignored --force  # Don't ask
 ```
 
 Clears the project list inside a project, otherwise the global list. Add `--global` or `--project` to choose.
+
+In scripts, pass `--force`. Without it, `--clear-ignored` still clears when it isn't run in a terminal, but prints a warning: a future release will require `--force` there.
 
 ### Edit manually
 

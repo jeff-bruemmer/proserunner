@@ -29,6 +29,72 @@
 (def default-ignore-template
   "{:ignore #{}\n :ignore-issues #{}}")
 
+;;;; Proxies
+
+(defn- env-entry
+  "Returns [name value] for the first of `names` set to a non-blank value in `env`."
+  [env names]
+  (some #(let [v (get env %)]
+           (when-not (string/blank? v) [% v]))
+        names))
+
+(defn- no-proxy?
+  "True when `host` matches NO_PROXY: a comma-separated list of hosts and
+  domains (each also matching its subdomains), or * for every host."
+  [host env]
+  (let [host (string/lower-case host)
+        [_ value] (env-entry env ["no_proxy" "NO_PROXY"])]
+    (boolean
+     (some (fn [entry]
+             (let [domain (string/replace (string/lower-case entry) #"^\*?\." "")]
+               (or (= "*" entry)
+                   (= host domain)
+                   (string/ends-with? host (str "." domain)))))
+           (remove string/blank? (some-> value (string/split #"\s*,\s*")))))))
+
+(defn proxy-for
+  "Returns {:host :port} for the proxy to reach `url` through, or nil to
+  connect directly. Follows curl: <scheme>_proxy (e.g. HTTPS_PROXY), then
+  ALL_PROXY, skipping hosts in NO_PROXY; the port defaults to 1080.
+  Java's HTTP client ignores these variables, so we read them from `env`."
+  [url env]
+  (let [uri (java.net.URI. url)
+        scheme (.getScheme uri)
+        [var-name value] (env-entry env [(str scheme "_proxy")
+                                         (str (string/upper-case scheme) "_PROXY")
+                                         "all_proxy" "ALL_PROXY"])]
+    (when (and value (not (no-proxy? (.getHost uri) env)))
+      (let [with-scheme (if (string/includes? value "://") value (str "http://" value))
+            ^java.net.URI proxy-uri (try (java.net.URI. with-scheme)
+                                         (catch java.net.URISyntaxException _ nil))
+            host (some-> proxy-uri .getHost)]
+        ;; Name the variable but not its value, which may hold credentials
+        (when-not host
+          (throw (ex-info (str var-name " isn't a valid proxy URL. Expected something like http://proxy.example.com:8080")
+                          {:variable var-name})))
+        {:host host
+         :port (let [port (.getPort proxy-uri)] (if (neg? port) 1080 port))}))))
+
+(defn- request-opts
+  "Options for a GET of `url`: `opts`, plus a client that goes through the
+  proxy from the environment when one applies."
+  [url opts]
+  (if-let [p (proxy-for url (System/getenv))]
+    (assoc opts :client (client/client (assoc client/default-client-opts :proxy p)))
+    opts))
+
+;;;; Downloading default checks
+
+(defn- connection-error
+  "Describes a failed connection to `url` for people. Java's connection
+  errors often have no message, so fall back to the exception's name."
+  [url ^Exception e]
+  (let [p (proxy-for url (System/getenv))]
+    (str "Couldn't download from " (.getHost (java.net.URI. url))
+         (when p (str " through the proxy at " (:host p) ":" (:port p)))
+         " (" (or (.getMessage e) (.getSimpleName (class e))) ")."
+         " Check your connection and try again.")))
+
 (defn ^:private get-remote-zip!
   "Retrieves default checks, or times out after 5 seconds.
 
@@ -38,12 +104,16 @@
   [address]
   (result/try-result-with-context
    (fn []
-     (let [resp (client/get address {:as :bytes
-                                     :timeout 5000
-                                     :throw false})]
+     (let [resp (try
+                  (client/get address (request-opts address {:as :bytes
+                                                             :timeout 5000
+                                                             :throw false}))
+                  (catch java.io.IOException e
+                    (throw (ex-info (connection-error address e) {:address address} e))))]
        (if (= 200 (:status resp))
          (:body resp)
-         (throw (ex-info "Failed to fetch remote checks"
+         (throw (ex-info (str "Couldn't download default checks: " address
+                              " returned HTTP " (:status resp) ".")
                         {:status (:status resp)
                          :address address})))))
    {:operation :get-remote-zip :address address}))
@@ -70,6 +140,12 @@
         (let [entry-name (string/replace (.getName entry) old-name new-name)
               save-path (file-utils/join-path output entry-name)
               out-file (io/file save-path)]
+          ;; Entries like ../../.bashrc must not land outside output
+          (when-not (.startsWith (.normalize (.toAbsolutePath (.toPath out-file)))
+                                 (.toAbsolutePath (.toPath (io/file output))))
+            (throw (ex-info (str "Refusing to extract " (.getName entry)
+                                 ": it points outside " output)
+                            {:entry (.getName entry)})))
           (if (.isDirectory entry)
             (file-utils/mkdirs-if-missing save-path)
             (copy! stream save-path out-file))
@@ -80,8 +156,8 @@
    Returns nil if unable to fetch (offline, rate limit, etc)."
   []
   (try
-    (let [resp (client/get remote-api {:timeout 3000
-                                       :throw false})]
+    (let [resp (client/get remote-api (request-opts remote-api {:timeout 3000
+                                                                :throw false}))]
       (when (= 200 (:status resp))
         (let [body (json/parse-string (:body resp) true)]
           (:sha body))))
@@ -93,28 +169,6 @@
   (when sha
     (let [version-file (sys/filepath ".proserunner" ".version")]
       (file-utils/atomic-spit version-file sha))))
-
-(defn ^:private download-checks!
-  "Download and extract default checks from GitHub.
-
-  Returns Result<nil> - Success when complete, Failure on error."
-  []
-  (console/status "Downloading default checks from " remote-address)
-  (result/try-result-with-context
-   (fn []
-     (let [zip-result (get-remote-zip! remote-address)]
-       (if (result/failure? zip-result)
-         (throw (ex-info (:error zip-result) (:context zip-result)))
-         (do
-           (unzip-file! {:input (:value zip-result)
-                         :output (sys/home-dir)
-                         :old-name "proserunner-default-checks-main"
-                         :new-name ".proserunner"})
-           ;; Save the version after successful download
-           (when-let [version (get-remote-version)]
-             (write-local-version! version))
-           nil))))
-   {:operation :download-checks}))
 
 (defn ^:private backup-directory!
   "Create a timestamped backup of a directory."
@@ -132,17 +186,6 @@
             (io/copy file target))))
       (console/status "Created backup at: " backup-dir)
       backup-dir)))
-
-(defn- backup-and-preserve-files
-  "Backs up existing checks and preserves config and ignore files.
-  Returns map with :config-backup and :ignore-backup (may be nil)."
-  [default-dir config-file ignore-file]
-  (console/status "Backing up existing checks...")
-  (backup-directory! default-dir)
-  {:config-backup (when (.exists (io/file config-file))
-                    (slurp config-file))
-   :ignore-backup (when (.exists (io/file ignore-file))
-                    (slurp ignore-file))})
 
 (defn ensure-global-config!
   "Ensures ~/.proserunner/ directory and ignore.edn exist.
@@ -170,62 +213,130 @@
            ";; Auto-generated by --restore-defaults\n\n"
            (with-out-str (pprint/pprint config-content))))))
 
-(defn- download-and-restore-preserved-files!
-  "Downloads fresh checks and restores preserved files.
-  Throws on download failure."
-  [config-file ignore-file config-backup ignore-backup]
-  (console/status "Downloading fresh default checks...")
-  (let [dl-result (download-checks!)]
-    (when (result/failure? dl-result)
-      (throw (ex-info (:error dl-result) (:context dl-result)))))
+;;;; Installing default checks
 
-  ;; Restore preserved files atomically if they existed
-  (if config-backup
-    (do
-      (file-utils/atomic-spit config-file config-backup)
-      (console/status "Preserved your config.edn"))
-    (do
-      (create-default-config-entry!)
-      (console/status "Created config.edn with default check entry")))
+(def ^:private tmp-prefix
+  "Prefix for temporary directories inside ~/.proserunner."
+  ".tmp-")
 
-  (when ignore-backup
-    (file-utils/atomic-spit ignore-file ignore-backup)
-    (console/status "Preserved your ignore.edn"))
+(defn- move!
+  "Renames `from` to `to` in one atomic step, replacing `to` if it's a file.
+  Both must be on the same filesystem."
+  [from to]
+  (java.nio.file.Files/move
+   (.toPath (io/file from))
+   (.toPath (io/file to))
+   (into-array java.nio.file.StandardCopyOption
+               [java.nio.file.StandardCopyOption/ATOMIC_MOVE
+                java.nio.file.StandardCopyOption/REPLACE_EXISTING])))
 
-  (console/status "Default checks restored.")
-  (console/status "Your custom checks in ~/.proserunner/custom/ were not modified."))
+(defn- add-missing!
+  "Moves each file under directory `from` to the same place under `to`,
+  unless a file is already there."
+  [from to]
+  (let [base (.toPath (io/file from))]
+    (doseq [^java.io.File f (file-seq (io/file from))
+            :when (.isFile f)
+            :let [target (io/file to (str (.relativize base (.toPath f))))]
+            :when (not (.exists target))]
+      (file-utils/ensure-parent-dir (.getPath target))
+      (move! f target))))
+
+(defn- swap-in!
+  "Replaces directory `target` with `replacement` using two renames, so it's
+  never half old, half new. Between the renames `target` is briefly missing,
+  which the next run treats as missing checks and downloads again."
+  [replacement target dir]
+  (let [old (io/file dir (str tmp-prefix "replaced-" (System/nanoTime)))]
+    (when (.exists (io/file target))
+      (move! target old))
+    (move! replacement target)
+    (file-utils/delete-tree! old)))
+
+(defn- install-staged!
+  "Moves checks extracted to `staging` into `dir`:
+  - default/ is swapped in whole.
+  - config.edn and ignore.edn are skipped; proserunner writes its own when
+    they're missing, and never replaces the user's.
+  - Directories people add to, like custom/, only gain files they lack.
+  - Everything else (README.md, LICENSE.txt) is replaced."
+  [staging dir]
+  (doseq [^java.io.File f (.listFiles (io/file staging))
+          :let [fname (.getName f)
+                target (io/file dir fname)]]
+    (cond
+      (= "default" fname) (swap-in! f target dir)
+      (#{"config.edn" "ignore.edn"} fname) nil
+      (.isDirectory f) (add-missing! f target)
+      :else (move! f target))))
+
+(defn- remove-leftovers!
+  "Deletes temporary directories that an interrupted download left in `dir`."
+  [dir]
+  (doseq [^java.io.File f (.listFiles (io/file dir))
+          :when (and (.isDirectory f)
+                     (string/starts-with? (.getName f) tmp-prefix))]
+    (file-utils/delete-tree! f)))
+
+(defn- install-default-checks!
+  "Downloads the default checks into ~/.proserunner.
+
+  The archive is extracted to a temporary directory and moved into place
+  from there, so a failed or interrupted download leaves the current
+  checks, config, and ignores as they were. The next download deletes
+  anything an interrupted one left behind. With `backup?`, the current
+  default checks are copied to a timestamped backup first.
+
+  Returns Result with {:created-config? bool}, or Failure on error."
+  [{:keys [backup?]}]
+  (result/try-result-with-context
+   (fn []
+     (let [dir (sys/filepath ".proserunner")
+           default-dir (sys/filepath ".proserunner" "default")
+           config-file (sys/filepath ".proserunner" "config.edn")]
+       (file-utils/mkdirs-if-missing dir)
+       (remove-leftovers! dir)
+       (console/status "Downloading default checks from " remote-address)
+       (let [zip-result (get-remote-zip! remote-address)
+             _ (when (result/failure? zip-result)
+                 (throw (ex-info (:error zip-result) (:context zip-result))))
+             staging (str (java.nio.file.Files/createTempDirectory
+                           (.toPath (io/file dir))
+                           tmp-prefix
+                           (make-array java.nio.file.attribute.FileAttribute 0)))]
+         (try
+           (unzip-file! {:input (:value zip-result)
+                         :output staging
+                         :old-name "proserunner-default-checks-main/"
+                         :new-name ""})
+           (when (and backup? (.exists (io/file default-dir)))
+             (console/status "Backing up existing checks...")
+             (backup-directory! default-dir))
+           (install-staged! staging dir)
+           (finally
+             (file-utils/delete-tree! staging))))
+       (when-let [version (get-remote-version)]
+         (write-local-version! version))
+       (let [create? (not (.exists (io/file config-file)))]
+         (when create?
+           (create-default-config-entry!))
+         {:created-config? create?})))
+   {:operation :download-checks}))
 
 (defn restore-defaults!
-  "Restore default checks from GitHub, backing up existing checks first.
+  "Downloads fresh default checks, backing up the current ones first.
+  Keeps config.edn, ignore.edn, and custom checks.
 
   Returns Result<nil> - Success when complete, Failure on error."
   []
   (console/status "Restoring default checks...")
-  (result/try-result-with-context
-   (fn []
-     (let [proserunner-dir (sys/filepath ".proserunner")
-           default-dir (sys/filepath ".proserunner" "default")
-           config-file (sys/filepath ".proserunner" "config.edn")
-           ignore-file (sys/filepath ".proserunner" "ignore.edn")]
-
-       ;; Check if .proserunner directory exists
-       (if-not (.exists (io/file proserunner-dir))
-         (do
-           (console/status "No .proserunner directory found. Creating fresh installation...")
-           (let [dl-result (download-checks!)]
-             (if (result/failure? dl-result)
-               (throw (ex-info (:error dl-result) (:context dl-result)))
-               (do
-                 (console/status "Default checks installed.")
-                 (create-default-config-entry!)
-                 (console/status "Created config.edn with default check entry")))))
-         ;; Otherwise, backup and restore
-         (let [{:keys [config-backup ignore-backup]}
-               (backup-and-preserve-files default-dir config-file ignore-file)]
-           (download-and-restore-preserved-files! config-file ignore-file
-                                                  config-backup ignore-backup)))
-       nil))
-   {:operation :restore-defaults}))
+  (result/bind
+   (install-default-checks! {:backup? true})
+   (fn [{:keys [created-config?]}]
+     (when created-config?
+       (console/status "Created config.edn with default check entry"))
+     (console/status "Default checks restored. Your config, ignores, and custom checks were kept.")
+     (result/ok nil))))
 
 (defn initialize-proserunner
   "Sets up ~/.proserunner directory and downloads default checks for first-time users.
@@ -233,14 +344,13 @@
    Returns Result with config on success, or Failure with error details."
   [default-config]
   (console/status "First run: setting up ~/.proserunner")
-  (let [dl-result (download-checks!)]
+  (let [dl-result (install-default-checks! {:backup? false})]
     (if (result/failure? dl-result)
       (result/map-err dl-result #(str "Failed to download default checks: " %))
       (do
         (console/status "Created Proserunner directory: " (sys/filepath ".proserunner/"))
         (console/status "You can store custom checks in: " (sys/filepath ".proserunner" "custom/"))
         (console/status "To update the default checks later, run: proserunner --restore-defaults")
-        (create-default-config-entry!)
         (loader/load-config-from-file default-config)))))
 
 (defn default

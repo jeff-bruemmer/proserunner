@@ -110,7 +110,8 @@
 (defn print-concise
   "Prints a short usage message for when no path or action is given."
   []
-  (println "proserunner - fast prose linter\n")
+  (println "P R O S E R U N N E R\n")
+  (println "A fast, customizable prose linter.\n")
   (println "Usage: proserunner [OPTIONS] [PATH...]\n")
   (println "Examples:")
   (println "  proserunner document.md                Check a file")

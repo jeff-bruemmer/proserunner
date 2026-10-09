@@ -90,6 +90,17 @@
   [dirpath]
   (.mkdirs (io/file dirpath)))
 
+(defn delete-tree!
+  "Deletes a file, or a directory and everything in it. Doesn't follow
+  symlinks, so it never deletes outside `path`. Missing paths are fine."
+  [path]
+  (let [f (io/file path)]
+    (when (and (.isDirectory f)
+               (not (java.nio.file.Files/isSymbolicLink (.toPath f))))
+      (doseq [child (.listFiles f)]
+        (delete-tree! child)))
+    (.delete f)))
+
 (defn normalize-path
   "Normalizes a file path to be relative to the current working directory.
   This ensures consistent path representation across the application.

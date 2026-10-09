@@ -229,3 +229,29 @@
           result (file-utils/normalize-path outside-path)]
       (is (= outside-path result)
           "Paths outside cwd should remain absolute"))))
+
+(deftest delete-tree-test
+  (let [base (str (System/getProperty "java.io.tmpdir") File/separator
+                  "proserunner-delete-tree-" (System/nanoTime))
+        tree (io/file base "tree")
+        outside (io/file base "outside")]
+    (try
+      (io/make-parents (io/file tree "a/b/file.txt"))
+      (spit (io/file tree "a/b/file.txt") "x")
+      (io/make-parents (io/file outside "keep.txt"))
+      (spit (io/file outside "keep.txt") "keep")
+      (java.nio.file.Files/createSymbolicLink
+       (.toPath (io/file tree "link"))
+       (.toPath outside)
+       (make-array java.nio.file.attribute.FileAttribute 0))
+
+      (file-utils/delete-tree! tree)
+
+      (testing "deletes the directory and everything in it"
+        (is (not (.exists tree))))
+      (testing "doesn't follow symlinks out of the tree"
+        (is (= "keep" (slurp (io/file outside "keep.txt")))))
+      (testing "missing paths are fine"
+        (is (some? (file-utils/delete-tree! tree))))
+      (finally
+        (file-utils/delete-tree! base)))))

@@ -182,19 +182,26 @@
    :ignore/list
    {}))
 
+(def clear-without-force-warning
+  (str "In a future release, --clear-ignored will need --force when not run in a terminal. "
+       "Add --force now to keep this working."))
+
 (defmethod execute-effect :ignore/clear
   [[_ opts]]
   (effect-wrapper
    #(let [{:keys [msg-context] :as target-info} (scope/get-target-info opts)
           {:keys [ignore ignore-issues]} (read-ignores-by-scope opts)
-          n (+ (count ignore) (count ignore-issues))]
+          n (+ (count ignore) (count ignore-issues))
+          ask? (and (not (:force opts)) (console/interactive?))]
+      ;; Scripts clear without asking today; warn them before that changes
+      (when-not (or ask? (:force opts))
+        (console/warn clear-without-force-warning))
       (cond
         (zero? n)
         (do (console/status (format "The %s ignore list is already empty." msg-context))
             (assoc target-info :cleared 0))
 
-        (and (not (:force opts))
-             (console/interactive?)
+        (and ask?
              (not (console/confirm? (format "Clear %d ignore(s) from the %s ignore list?"
                                             n msg-context))))
         (do (console/status "Nothing cleared.")

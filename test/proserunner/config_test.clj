@@ -3,10 +3,14 @@
 
   Note: fetch-or-create! has essential complexity (decision tree with ordering).
   These tests document the branching behavior without requiring structural changes."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [babashka.http-client :as http]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [proserunner.config :as config]
             [proserunner.config.loader]
-            [proserunner.result]))
+            [proserunner.result :as result]
+            [proserunner.test-helpers :refer [silently with-temp-dir with-user-home]]))
 
 (deftest fetch-or-create-input-validation-test
   (testing "Throws on non-string config-filepath"
@@ -54,31 +58,178 @@
       (is (re-find #"update" docstring)
           "Documents update checking"))))
 
-(deftest restore-defaults-structure-test
-  (testing "restore-defaults! has well-extracted helper functions"
-    ;; Document that helpers were extracted during refactoring
-    (let [helpers ['backup-and-preserve-files
-                   'download-and-restore-preserved-files!]]
-      (is (= 2 (count helpers))
-          "Two helper functions extracted from restore-defaults!")
+;;;; Installing default checks
 
-      ;; Verify helpers exist
-      (is (resolve 'proserunner.config/backup-and-preserve-files)
-          "backup-and-preserve-files helper exists")
-      (is (resolve 'proserunner.config/download-and-restore-preserved-files!)
-          "download-and-restore-preserved-files! helper exists")))
+(defn- zip-bytes
+  "A default-checks archive holding `entries` (path -> content), under the
+  top-level directory GitHub adds."
+  [entries]
+  (let [out (java.io.ByteArrayOutputStream.)]
+    (with-open [zip (java.util.zip.ZipOutputStream. out)]
+      (doseq [[path ^String content] entries]
+        (.putNextEntry zip (java.util.zip.ZipEntry. (str "proserunner-default-checks-main/" path)))
+        (.write zip (.getBytes content "UTF-8"))
+        (.closeEntry zip)))
+    (.toByteArray out)))
 
-  (testing "restore-defaults! returns Result"
-    ;; Function uses result/try-result-with-context wrapper
-    (let [docstring (:doc (meta #'config/restore-defaults!))]
-      (is (re-find #"Result" docstring)
-          "Documents Result return type")))
+(defn- fake-github
+  "Stands in for http/get: serves `zip` as the archive and fails the
+  version lookup, which is optional."
+  [zip]
+  (fn [url & _]
+    (if (= url config/remote-address)
+      {:status 200 :body zip}
+      {:status 404})))
 
-  (testing "restore-defaults! handles two scenarios"
-    ;; Documents the branching logic
-    (let [scenarios [:fresh-installation :backup-and-restore]]
-      (is (= 2 (count scenarios))
-          "Handles fresh install and backup/restore scenarios"))))
+(defn- write! [dir path content]
+  (let [f (io/file dir path)]
+    (io/make-parents f)
+    (spit f content)))
+
+(defn- tmp-dirs
+  "Temporary directories left in `dir`."
+  [dir]
+  (filter #(str/starts-with? (.getName ^java.io.File %) ".tmp-")
+          (.listFiles (io/file dir))))
+
+(def ^:private archive
+  {"default/new.edn" "new"
+   "config.edn" "theirs"
+   "ignore.edn" "theirs"
+   "custom/example.edn" "example"
+   "README.md" "readme"})
+
+(deftest restore-defaults-keeps-user-files-test
+  (with-temp-dir [home "proserunner-restore"]
+    (with-user-home home
+      (let [dir (io/file home ".proserunner")]
+        (write! dir "config.edn" "my config")
+        (write! dir "ignore.edn" "my ignores")
+        (write! dir "custom/mine.edn" "mine")
+        (write! dir "default/old.edn" "old")
+        (with-redefs [http/get (fake-github (zip-bytes archive))]
+          (is (result/success? (silently (config/restore-defaults!)))))
+
+        (testing "default/ is replaced"
+          (is (= "new" (slurp (io/file dir "default/new.edn"))))
+          (is (not (.exists (io/file dir "default/old.edn")))))
+
+        (testing "the old default/ is backed up"
+          (is (some #(.exists (io/file ^java.io.File % "old.edn"))
+                    (filter #(str/starts-with? (.getName ^java.io.File %) ".proserunner-backup-")
+                            (.listFiles (io/file home))))))
+
+        (testing "config, ignores, and custom checks are kept"
+          (is (= "my config" (slurp (io/file dir "config.edn"))))
+          (is (= "my ignores" (slurp (io/file dir "ignore.edn"))))
+          (is (= "mine" (slurp (io/file dir "custom/mine.edn")))))
+
+        (testing "missing custom files and repo files are added"
+          (is (= "example" (slurp (io/file dir "custom/example.edn"))))
+          (is (= "readme" (slurp (io/file dir "README.md")))))
+
+        (is (empty? (tmp-dirs dir)) "no temporary directories left")))))
+
+(deftest restore-defaults-fresh-install-test
+  (with-temp-dir [home "proserunner-fresh"]
+    (with-user-home home
+      (with-redefs [http/get (fake-github (zip-bytes archive))]
+        (is (result/success? (silently (config/restore-defaults!)))))
+      (let [dir (io/file home ".proserunner")]
+        (is (= "new" (slurp (io/file dir "default/new.edn"))))
+        (is (re-find #"\"new\"" (slurp (io/file dir "config.edn")))
+            "config.edn is generated from the installed checks, not taken from the archive")
+        (is (not (.exists (io/file dir "ignore.edn")))
+            "ignore.edn comes from ensure-global-config!, not the archive")))))
+
+(deftest interrupted-download-changes-nothing-test
+  (with-temp-dir [home "proserunner-interrupted"]
+    (with-user-home home
+      (let [dir (io/file home ".proserunner")
+            real-copy @#'config/copy!
+            copies (atom 0)]
+        (write! dir "config.edn" "my config")
+        (write! dir "default/old.edn" "old")
+        (with-redefs [http/get (fake-github (zip-bytes {"default/a.edn" "a"
+                                                        "default/b.edn" "b"
+                                                        "config.edn" "theirs"}))
+                      config/copy! (fn [& args]
+                                     (when (= 2 (swap! copies inc))
+                                       (throw (java.io.IOException. "No space left on device")))
+                                     (apply real-copy args))]
+          (let [r (silently (config/restore-defaults!))]
+            (is (result/failure? r))
+            (is (re-find #"No space left" (:error r)))))
+        (is (= "old" (slurp (io/file dir "default/old.edn"))))
+        (is (not (.exists (io/file dir "default/a.edn"))))
+        (is (= "my config" (slurp (io/file dir "config.edn"))))
+        (is (empty? (tmp-dirs dir)) "a failed download cleans up after itself")))))
+
+(deftest killed-download-is-cleaned-up-next-time-test
+  (with-temp-dir [home "proserunner-killed"]
+    (with-user-home home
+      (let [dir (io/file home ".proserunner")]
+        ;; What a run killed mid-extraction leaves behind
+        (write! dir ".tmp-123/default/partial.edn" "partial")
+        (write! dir "default/old.edn" "old")
+        (with-redefs [http/get (fake-github (zip-bytes archive))]
+          (is (result/success? (silently (config/restore-defaults!)))))
+        (is (empty? (tmp-dirs dir)))
+        (is (= "new" (slurp (io/file dir "default/new.edn"))))))))
+
+(deftest archive-entries-cannot-escape-test
+  (with-temp-dir [home "proserunner-zipslip"]
+    (with-user-home home
+      (with-redefs [http/get (fake-github (zip-bytes {"../../evil.txt" "evil"}))]
+        (let [r (silently (config/restore-defaults!))]
+          (is (result/failure? r))
+          (is (re-find #"Refusing to extract" (:error r)))))
+      (is (not (.exists (io/file home "evil.txt")))))))
+
+(deftest connection-errors-are-readable-test
+  (testing "Java's ConnectException has no message; the error still says what failed"
+    (with-temp-dir [home "proserunner-offline"]
+      (with-user-home home
+        (with-redefs [http/get (fn [& _] (throw (java.net.ConnectException.)))]
+          (let [r (silently (config/restore-defaults!))]
+            (is (result/failure? r))
+            (is (re-find #"Couldn't download from github\.com \(ConnectException\)" (:error r)))))))))
+
+;;;; Proxies
+
+(deftest proxy-for-test
+  (let [url "https://api.github.com/repos/x"]
+    (testing "no proxy variables means a direct connection"
+      (is (nil? (config/proxy-for url {}))))
+
+    (testing "HTTPS_PROXY (lowercase first), then ALL_PROXY"
+      (is (= {:host "proxy.corp" :port 3128}
+             (config/proxy-for url {"HTTPS_PROXY" "http://proxy.corp:3128"})))
+      (is (= {:host "lower" :port 1}
+             (config/proxy-for url {"https_proxy" "http://lower:1" "HTTPS_PROXY" "http://upper:2"})))
+      (is (= {:host "all" :port 8080}
+             (config/proxy-for url {"ALL_PROXY" "all:8080"}))))
+
+    (testing "HTTP_PROXY doesn't apply to https URLs, as in curl"
+      (is (nil? (config/proxy-for url {"HTTP_PROXY" "http://proxy:3128"}))))
+
+    (testing "the port defaults to 1080"
+      (is (= 1080 (:port (config/proxy-for url {"HTTPS_PROXY" "proxy.corp"})))))
+
+    (testing "NO_PROXY matches hosts and their subdomains"
+      (doseq [no-proxy ["github.com" ".github.com" "*.github.com" "example.com, github.com" "*" "GitHub.com"]]
+        (is (nil? (config/proxy-for url {"HTTPS_PROXY" "proxy:1" "NO_PROXY" no-proxy}))
+            no-proxy))
+      (is (some? (config/proxy-for url {"HTTPS_PROXY" "proxy:1" "NO_PROXY" "hub.com"}))
+          "hub.com is not a parent domain of api.github.com"))
+
+    (testing "a bad value names the variable, not the value, which may hold credentials"
+      (doseq [bad ["http://user:secret@:bad" "http://secret host"]]
+        (let [e (try (config/proxy-for url {"HTTPS_PROXY" bad})
+                     nil
+                     (catch clojure.lang.ExceptionInfo e e))]
+          (is (re-find #"HTTPS_PROXY" (ex-message e)) bad)
+          (is (not (re-find #"secret" (ex-message e))) bad))))))
 
 (deftest ensure-checks-exist-structure-test
   (testing "ensure-checks-exist! validates check references"
