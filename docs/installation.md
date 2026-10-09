@@ -42,3 +42,14 @@ clojure -M:run --file /path/to/file.md
 ## Pre-built binaries
 
 Grab one from [releases](https://github.com/jeff-bruemmer/proserunner/releases), make it executable, toss it in your PATH.
+
+## Uninstall
+
+```bash
+rm ~/.local/bin/proserunner           # or: sudo rm /usr/local/bin/proserunner
+rm -rf ~/.proserunner                 # Config, checks, and global ignores
+rm -rf ~/.cache/proserunner           # Cache (see docs/usage.md#cache if you moved it)
+rm -rf ~/.proserunner-backup-*        # Backups made by --restore-defaults
+```
+
+If `bb install` added `~/.local/bin` to your PATH, remove the line after `# Added by proserunner installer` from your shell config (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).

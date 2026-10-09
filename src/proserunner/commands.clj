@@ -185,10 +185,11 @@
                 alt-msg]}))
 
 (defn handle-remove-ignore
-  "Handler for removing a specimen from ignore list."
+  "Handler for removing a specimen from ignore list.
+  Resolves the scope the same way the effect does, so the message names the right list."
   [{:keys [remove-ignore] :as opts}]
-  (let [{:keys [msg-context]} (get-target-context opts)]
-    {:effects [[:ignore/remove remove-ignore opts]]
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+    {:effects [[:ignore/remove remove-ignore opts-with-target]]
      :messages [(format "Removed from %s ignore list: %s" msg-context remove-ignore)]}))
 
 (defn handle-list-ignored
@@ -198,11 +199,11 @@
    :format-fn output-fmt/ignored-list})
 
 (defn handle-clear-ignored
-  "Handler for clearing all ignored specimens."
+  "Handler for clearing all ignored specimens.
+  The effect confirms interactively and reports what it cleared."
   [opts]
-  (let [{:keys [msg-context]} (get-target-context opts)]
-    {:effects [[:ignore/clear opts]]
-     :messages [(format "Cleared all %s ignored specimens." msg-context)]}))
+  (let [{:keys [opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+    {:effects [[:ignore/clear opts-with-target]]}))
 
 (defn handle-ignore-all
   "Handler for ignoring all current findings.
@@ -211,7 +212,7 @@
   [opts]
   (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
     {:effects [[:ignore/add-all opts-with-target]]
-     :messages [(format "Adding all current findings to %s ignore list..." msg-context)]}))
+     :progress [(format "Adding all current findings to %s ignore list..." msg-context)]}))
 
 (defn handle-ignore-issues
   "Handler for ignoring specific issues by number.
@@ -224,7 +225,7 @@
     (if (result/success? parse-result)
       (let [issue-nums (result/get-value parse-result)]
         {:effects [[:ignore/add-issues issue-nums opts-with-target]]
-         :messages [(format "Ignoring issues %s in %s ignore list..."
+         :progress [(format "Ignoring issues %s in %s ignore list..."
                             (str/join ", " issue-nums)
                             msg-context)]})
       {:error (:error parse-result)})))
@@ -238,15 +239,14 @@
 (defn handle-clean-ignores
   "Handler for cleaning stale ignore entries."
   [opts]
-  (let [{:keys [msg-context]} (get-target-context opts)]
-    {:effects [[:ignore/clean opts]]
-     :messages [(format "Cleaning stale ignores from %s ignore list..." msg-context)]}))
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+    {:effects [[:ignore/clean opts-with-target]]
+     :progress [(format "Cleaning stale ignores from %s ignore list..." msg-context)]}))
 
 (defn handle-restore-defaults
   "Handler for restoring default checks from GitHub."
   [_opts]
-  {:effects [[:config/restore-defaults]]
-   :messages ["Restoring default checks from GitHub..."]})
+  {:effects [[:config/restore-defaults]]})
 
 (defn handle-init-project
   "Handler for initializing project configuration."
@@ -257,8 +257,7 @@
 (defn handle-add-checks
   "Handler for adding custom checks from a directory."
   [{:keys [add-checks] :as opts}]
-  {:effects [[:checks/add add-checks (select-keys opts [:name :global :project])]]
-   :messages [(format "Adding checks from: %s" add-checks)]})
+  {:effects [[:checks/add add-checks (select-keys opts [:name :global :project])]]})
 
 (defn handle-file
   "Handler for processing a file or directory."
@@ -281,9 +280,9 @@
   {:effects [[:version/print]]})
 
 (defn handle-default
-  "Handler for default action (print usage with title)."
+  "Handler for running with no action: print concise usage."
   [opts]
-  {:effects [[:help/print opts "P R O S E R U N N E R"]]})
+  {:effects [[:help/print-concise opts]]})
 
 ;; Command handler registry
 (def handlers
@@ -308,12 +307,15 @@
 ;; Command determination
 (defn determine-command
   "Determines which command to execute based on options.
-  Returns a keyword identifying the command."
+  Returns a keyword identifying the command. Help and version win over
+  everything else, so -h can be added to any command line."
   [{:keys [add-ignore remove-ignore list-ignored clear-ignored ignore-all ignore-issues
            audit-ignores clean-ignores
            restore-defaults init-project add-checks
-           file checks help version]}]
+           file paths checks help version]}]
   (cond
+    help             :help
+    version          :version
     add-ignore       :add-ignore
     remove-ignore    :remove-ignore
     list-ignored     :list-ignored
@@ -325,47 +327,70 @@
     restore-defaults :restore-defaults
     init-project     :init-project
     add-checks       :add-checks
-    file             :file
+    (or file (seq paths)) :file
     checks           :checks
-    help             :help
-    version          :version
     :else            :default))
+
+(def ^:private actions
+  "Action flags in the order determine-command checks them."
+  [[:add-ignore "--add-ignore"] [:remove-ignore "--remove-ignore"]
+   [:list-ignored "--list-ignored"] [:clear-ignored "--clear-ignored"]
+   [:ignore-all "--ignore-all"] [:ignore-issues "--ignore-issues"]
+   [:audit-ignores "--audit-ignores"] [:clean-ignores "--clean-ignores"]
+   [:restore-defaults "--restore-defaults"] [:init-project "--init-project"]
+   [:add-checks "--add-checks"] [:file "PATH"] [:checks "--checks"]])
+
+(defn conflicting-actions-warning
+  "Returns a warning when more than one action is requested, naming the one
+  that runs and the ones that are ignored. Returns nil otherwise.
+  --ignore-all and --ignore-issues need a PATH, so that pairing doesn't count."
+  [opts]
+  (let [present? (fn [[k _]]
+                   (if (= k :file)
+                     (boolean (or (:file opts) (seq (:paths opts))))
+                     (boolean (get opts k))))
+        requested (filter present? actions)
+        requested (if (some #{:ignore-all :ignore-issues} (map first requested))
+                    (remove #(= :file (first %)) requested)
+                    requested)]
+    (when (> (count requested) 1)
+      (format "Only one action runs at a time: running %s, ignoring %s."
+              (second (first requested))
+              (str/join ", " (map second (rest requested)))))))
 
 (defn dispatch-command
   "Dispatches command based on options, returning effect description.
 
-  Returns a map with :command, :effects, and optionally :messages or :format-fn."
+  Returns a map with :command, :effects, and optionally :progress, :messages,
+  :format-fn, or :warnings (when more than one action was requested)."
   [opts]
   (let [cmd (determine-command opts)
-        handler (get handlers cmd handle-default)]
-    (assoc (handler opts) :command cmd)))
+        handler (get handlers cmd handle-default)
+        warning (when-not (#{:help :version} cmd)
+                  (conflicting-actions-warning opts))]
+    (cond-> (assoc (handler opts) :command cmd)
+      warning (assoc :warnings [warning]))))
 
 ;; Validation
 (defn validate-options
   "Validates options for conflicts and errors.
   Returns Success with options or Failure with error messages."
-  [{:keys [parallel-files sequential-lines global project ignore-issues ignore-all file] :as opts}]
+  [{:keys [global project ignore-issues ignore-all file paths] :as opts}]
   (cond
-    (and parallel-files (not sequential-lines))
-    (result/err "Cannot enable both parallel file and parallel line processing. Use --sequential-lines with --parallel-files."
-                {:operation :validate-options
-                 :conflict :parallel-processing
-                 :suggestion "Add --sequential-lines flag"})
-
     (and global project)
     (result/err "Cannot specify both --global and --project flags."
                 {:operation :validate-options
                  :conflict :config-scope
                  :flags [:global :project]})
 
-    (and ignore-issues (not file))
-    (result/err "The --ignore-issues flag requires a --file argument to determine which issues to ignore."
+    (and ignore-issues (not (or file (seq paths))))
+    (result/err "--ignore-issues needs the PATH you checked, so the issue numbers match. Example: proserunner doc.md --ignore-issues 1,3"
                 {:operation :validate-options
                  :missing-flag :file
                  :dependent-flag :ignore-issues})
 
-    (and ignore-all (not file))
-    (result/err "The --ignore-all flag requires a --file argument to determine which issues to ignore."
+    (and ignore-all (not (or file (seq paths))))
+    (result/err "--ignore-all needs the PATH whose findings to ignore. Example: proserunner doc.md --ignore-all"
                 {:operation :validate-options
                  :missing-flag :file
                  :dependent-flag :ignore-all})

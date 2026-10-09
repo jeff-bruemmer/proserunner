@@ -1,7 +1,8 @@
 (ns proserunner.system
   "Utilites for proserunner to figure out what OS it's on so it can follow system mores."
   (:gen-class)
-  (:require [proserunner.file-utils :as file-utils]
+  (:require [proserunner.console :as console]
+            [proserunner.file-utils :as file-utils]
             [clojure.string :as string]))
 
 (set! *warn-on-reflection* true)
@@ -23,7 +24,7 @@
   [config]
   (let [dd (filepath ".proserunner/")]
     (if (nil? config)
-      (do (println "Using default directory: " dd)
+      (do (console/status "Using default directory: " dd)
           dd)
       (-> config
           (string/split (re-pattern java.io.File/separator))

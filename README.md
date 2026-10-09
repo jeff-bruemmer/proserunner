@@ -5,7 +5,7 @@ Fast prose linter. Finds writing issues, lets you ignore what you don't care abo
 ## Example
 
 ```bash
-$ proserunner --file document.md
+$ proserunner document.md
 ```
 
 ```
@@ -19,7 +19,7 @@ document.md
 Fix what matters, ignore the rest by number:
 
 ```bash
-$ proserunner --file document.md --ignore-issues 2,3
+$ proserunner document.md --ignore-issues 2,3
 ```
 
 ```
@@ -31,8 +31,15 @@ document.md
 ## Quick start
 
 ```bash
-proserunner --file document.md    # Check a file
+proserunner document.md            # Check a file
+proserunner docs/ README.md        # Check several paths
 proserunner --init-project         # Set up project config
+```
+
+In CI, the exit status does the work: `0` means no issues, `1` means issues were found, `2` means something went wrong.
+
+```bash
+proserunner docs/ -o plain   # Fails the build on issues; one issue per line in the log
 ```
 
 ## Why it's useful
@@ -40,7 +47,7 @@ proserunner --init-project         # Set up project config
 - **Numbered issues** - Ignore specific problems by number: `--ignore-issues 1,3,5`. Numbers are for the current run.
 - **Customizable** - Add checks as EDN files. Toggle them on/off without touching code.
 - **Fast** - Parallel processing, smart caching.
-- **Flexible** - Output formats: table, JSON, EDN, verbose.
+- **Flexible** - Output formats: grouped, plain (one issue per line), table, JSON, EDN, verbose.
 - **Smart ignores** - Run it, fix what matters, ignore the rest by number. Ignores remember location.
 - **Project friendly** - Commit ignore files and custom checks. Everyone sees the same issues.
 

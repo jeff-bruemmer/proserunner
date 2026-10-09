@@ -73,3 +73,33 @@
               :else
               (compute-and-store inputs options))]
         (result/ok (assoc inputs :results results))))))
+
+(defn- merge-payloads
+  "Folds one path's payload into the accumulated payload: issues are
+  concatenated, file counts summed, everything else kept from the first."
+  [acc payload]
+  (if (nil? acc)
+    payload
+    (-> acc
+        (update-in [:results :results]
+                   #(vec (concat % (get-in payload [:results :results]))))
+        (update :file-count + (:file-count payload)))))
+
+(defn compute-paths
+  "Runs compute-or-cached on each path in (:paths options), or on (:file options)
+  when there are no paths, and merges the results into a single payload so issue
+  numbers span the whole run. Each path keeps its own cache entry.
+  The payload gains :file-count, the number of files checked.
+
+  Returns Result with the merged payload, or the first Failure."
+  [{:keys [paths file] :as options}]
+  (reduce (fn [acc path]
+            (let [r (compute-or-cached (assoc options :file path))]
+              (if (result/failure? r)
+                (reduced r)
+                (result/ok
+                 (merge-payloads (result/get-value acc)
+                                 (assoc (:value r) :file-count
+                                        (input/count-files path options)))))))
+          (result/ok nil)
+          (if (seq paths) paths [file])))

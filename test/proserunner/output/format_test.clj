@@ -66,3 +66,27 @@
 
     (testing "messages align across file groups"
       (is (apply = (map #(string/index-of % "->") issue-lines))))))
+
+(def ^:private sample-issues
+  [{:file "a.md" :line-num 3 :col-num 7 :specimen "very" :message "Avoid."
+    :name "Hedging" :kind "existence" :line-text "It is very good."}
+   {:file "b.md" :line-num 12 :col-num 1 :specimen "the the" :message "Repetition."
+    :name "Repetition" :kind "repetition" :line-text "the the end"}])
+
+(deftest plain-numbered-test
+  (testing "one issue per line, path:line:col: prefix, numbered across files"
+    (let [lines (string/split-lines (with-out-str (format/plain-numbered sample-issues)))]
+      (is (= ["a.md:3:7: [1] \"very\" -> Avoid."
+              "b.md:12:1: [2] \"the the\" -> Repetition."]
+             lines)))))
+
+(deftest table-numbered-columns-test
+  (testing "columns come in a fixed order with readable headings"
+    (let [header (->> (with-out-str (format/table-numbered sample-issues))
+                      string/split-lines
+                      (remove string/blank?)
+                      first)
+          headings (->> (string/split header #"\|")
+                        (map string/trim)
+                        (remove string/blank?))]
+      (is (= ["#" "File" "Line" "Col" "Specimen" "Message" "Name" "Kind"] headings)))))

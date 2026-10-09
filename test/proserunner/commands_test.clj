@@ -50,11 +50,10 @@
       (is (result/success? result))
       (is (= opts (:value result)))))
 
-  (testing "Parallel files without sequential lines fails"
+  (testing "Parallel files without sequential lines is valid"
     (let [opts {:parallel-files true}
           result (cmd/validate-options opts)]
-      (is (result/failure? result))
-      (is (re-find #"parallel" (:error result)))))
+      (is (result/success? result))))
 
   (testing "Both global and project flags fails"
     (let [opts {:global true :project true}
@@ -71,7 +70,12 @@
     (let [opts {:ignore-issues "1,2,3"}
           result (cmd/validate-options opts)]
       (is (result/failure? result))
-      (is (re-find #"ignore-issues.*file" (:error result)))))
+      (is (re-find #"ignore-issues.*PATH" (:error result)))))
+
+  (testing "ignore-issues with a positional path is valid"
+    (let [opts {:ignore-issues "1" :paths ["test.md"]}
+          result (cmd/validate-options opts)]
+      (is (result/success? result))))
 
   (testing "ignore-issues with file is valid"
     (let [opts {:ignore-issues "1,2,3" :file "test.md"}
@@ -82,7 +86,7 @@
     (let [opts {:ignore-all true}
           result (cmd/validate-options opts)]
       (is (result/failure? result))
-      (is (re-find #"ignore-all.*file" (:error result)))))
+      (is (re-find #"ignore-all.*PATH" (:error result)))))
 
   (testing "ignore-all with file is valid"
     (let [opts {:ignore-all true :file "test.md"}
@@ -111,9 +115,13 @@
 (deftest handle-remove-ignore-test
   (testing "Handle remove-ignore produces correct effects"
     (let [opts {:remove-ignore "specimen1" :global true}
-          result (cmd/handle-remove-ignore opts)]
-      (is (= [[:ignore/remove "specimen1" opts]] (:effects result)))
-      (is (some? (:messages result))))))
+          result (cmd/handle-remove-ignore opts)
+          [[effect specimen effect-opts]] (:effects result)]
+      (is (= :ignore/remove effect))
+      (is (= "specimen1" specimen))
+      (is (true? (:global effect-opts)))
+      (is (false? (:project effect-opts)))
+      (is (re-find #"global" (first (:messages result)))))))
 
 (deftest handle-list-ignored-test
   (testing "Handle list-ignored produces correct effects"
@@ -125,15 +133,18 @@
 (deftest handle-clear-ignored-test
   (testing "Handle clear-ignored produces correct effects"
     (let [opts {:clear-ignored true :global true}
-          result (cmd/handle-clear-ignored opts)]
-      (is (= [[:ignore/clear opts]] (:effects result)))
-      (is (some? (:messages result))))))
+          result (cmd/handle-clear-ignored opts)
+          [[effect effect-opts]] (:effects result)]
+      (is (= :ignore/clear effect))
+      (is (true? (:global effect-opts)))
+      (is (false? (:project effect-opts)))
+      ;; The effect reports what it cleared, after confirming
+      (is (nil? (:messages result))))))
 
 (deftest handle-restore-defaults-test
   (testing "Handle restore-defaults produces correct effects"
     (let [result (cmd/handle-restore-defaults {})]
-      (is (= [[:config/restore-defaults]] (:effects result)))
-      (is (some? (:messages result))))))
+      (is (= [[:config/restore-defaults]] (:effects result))))))
 
 (deftest handle-init-project-test
   (testing "Handle init-project produces correct effects"
@@ -146,8 +157,7 @@
     (let [opts {:add-checks "/path/to/checks" :name "custom" :global true}
           result (cmd/handle-add-checks opts)]
       (is (= [[:checks/add "/path/to/checks" {:name "custom" :global true}]]
-             (:effects result)))
-      (is (some? (:messages result))))))
+             (:effects result))))))
 
 (deftest handle-file-test
   (testing "Handle file produces correct effects"
@@ -176,7 +186,7 @@
   (testing "Handle default produces correct effects"
     (let [opts {:summary "..."}
           result (cmd/handle-default opts)]
-      (is (= [[:help/print opts "P R O S E R U N N E R"]] (:effects result))))))
+      (is (= [[:help/print-concise opts]] (:effects result))))))
 
 (deftest dispatch-command-test
   (testing "Dispatch command returns effect description"
@@ -434,3 +444,26 @@
           result (cmd/get-target-context opts)]
       (is (= "value" (:some-flag (:opts-with-target result))))
       (is (= 42 (:another-opt (:opts-with-target result)))))))
+
+(deftest help-and-version-win-test
+  (testing "help is chosen even when other actions are present"
+    (is (= :help (cmd/determine-command {:help true :file "a.md"})))
+    (is (= :help (cmd/determine-command {:help true :add-ignore "x"}))))
+  (testing "version beats everything except help"
+    (is (= :version (cmd/determine-command {:version true :paths ["a.md"]}))))
+  (testing "positional paths select the file command"
+    (is (= :file (cmd/determine-command {:paths ["a.md"]})))))
+
+(deftest conflicting-actions-warning-test
+  (testing "no warning for a single action"
+    (is (nil? (cmd/conflicting-actions-warning {:paths ["a.md"]})))
+    (is (nil? (cmd/conflicting-actions-warning {:list-ignored true}))))
+  (testing "names the action that runs and the ones ignored"
+    (is (= "Only one action runs at a time: running --list-ignored, ignoring PATH."
+           (cmd/conflicting-actions-warning {:list-ignored true :file "a.md"}))))
+  (testing "--ignore-issues with a PATH is a valid pair"
+    (is (nil? (cmd/conflicting-actions-warning {:ignore-issues "1" :paths ["a.md"]}))))
+  (testing "dispatch attaches the warning"
+    (is (= 1 (count (:warnings (cmd/dispatch-command {:checks true :add-ignore "x" :global true}))))))
+  (testing "help never warns"
+    (is (nil? (:warnings (cmd/dispatch-command {:help true :checks true :file "a.md"}))))))

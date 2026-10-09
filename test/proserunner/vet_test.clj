@@ -454,3 +454,37 @@
           (when (.exists (io/file temp-dir))
             (doseq [f (reverse (file-seq (io/file temp-dir)))]
               (.delete f))))))))
+
+(deftest compute-paths-merges-several-paths
+  (testing "issues from every path land in one payload, numbered as one run"
+    (let [config-path (str (System/getProperty "user.home")
+                           File/separator ".proserunner" File/separator "config.edn")
+          cache-dir (str (System/getProperty "java.io.tmpdir") File/separator
+                         "proserunner-compute-paths-" (System/nanoTime))
+          opts {:paths ["resources/drivel.md" "resources/more/words.md"]
+                :config config-path
+                :cache-dir cache-dir
+                :output "group"}
+          r (binding [*out* (java.io.StringWriter.)
+                      *err* (java.io.StringWriter.)]
+              (vet/compute-paths opts))]
+      (try
+        (is (result/success? r))
+        (let [payload (:value r)
+              files (set (map :file (get-in payload [:results :results])))]
+          (is (= 2 (:file-count payload)))
+          (is (some #(re-find #"drivel\.md$" %) files))
+          (is (some #(re-find #"words\.md$" %) files)))
+        (finally
+          (doseq [f (reverse (file-seq (io/file cache-dir)))]
+            (.delete ^File f))))))
+
+  (testing "a path with nothing to check fails, naming the path"
+    (let [r (binding [*out* (java.io.StringWriter.)
+                      *err* (java.io.StringWriter.)]
+              (vet/compute-paths {:paths ["deps.edn"]
+                                  :config (str (System/getProperty "user.home")
+                                               "/.proserunner/config.edn")
+                                  :output "group"}))]
+      (is (result/failure? r))
+      (is (re-find #"^deps\.edn: unsupported file type" (:error r))))))

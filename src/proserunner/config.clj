@@ -2,6 +2,7 @@
   "Functions for creating a configuration directory."
   (:gen-class)
   (:require [proserunner
+             [console :as console]
              [file-utils :as file-utils]
              [result :as result]
              [system :as sys]]
@@ -86,15 +87,6 @@
           (:sha body))))
     (catch Exception _ nil)))
 
-(defn ^:private read-local-version
-  "Read the local version file if it exists."
-  []
-  (let [version-file (sys/filepath ".proserunner" ".version")]
-    (when (.exists (io/file version-file))
-      (try
-        (string/trim (slurp version-file))
-        (catch Exception _ nil)))))
-
 (defn ^:private write-local-version!
   "Write the current version SHA to local version file atomically."
   [sha]
@@ -102,26 +94,12 @@
     (let [version-file (sys/filepath ".proserunner" ".version")]
       (file-utils/atomic-spit version-file sha))))
 
-(defn ^:private checks-stale?
-  "Check if local checks are outdated compared to remote.
-   Returns true if checks should be updated."
-  []
-  (let [local-version (read-local-version)
-        remote-version (get-remote-version)]
-    (cond
-      ;; No version file exists, checks need download
-      (nil? local-version) true
-      ;; Couldn't reach GitHub, assume checks are current
-      (nil? remote-version) false
-      ;; Compare versions
-      :else (not= local-version remote-version))))
-
 (defn ^:private download-checks!
   "Download and extract default checks from GitHub.
 
   Returns Result<nil> - Success when complete, Failure on error."
   []
-  (println "Downloading default checks from: " remote-address ".")
+  (console/status "Downloading default checks from " remote-address)
   (result/try-result-with-context
    (fn []
      (let [zip-result (get-remote-zip! remote-address)]
@@ -152,14 +130,14 @@
                 target (io/file (str backup-dir rel-path))]
             (file-utils/ensure-parent-dir (.getPath target))
             (io/copy file target))))
-      (println "Created backup at:" backup-dir)
+      (console/status "Created backup at: " backup-dir)
       backup-dir)))
 
 (defn- backup-and-preserve-files
   "Backs up existing checks and preserves config and ignore files.
   Returns map with :config-backup and :ignore-backup (may be nil)."
   [default-dir config-file ignore-file]
-  (println "Backing up existing checks...")
+  (console/status "Backing up existing checks...")
   (backup-directory! default-dir)
   {:config-backup (when (.exists (io/file config-file))
                     (slurp config-file))
@@ -196,7 +174,7 @@
   "Downloads fresh checks and restores preserved files.
   Throws on download failure."
   [config-file ignore-file config-backup ignore-backup]
-  (println "\nDownloading fresh default checks...")
+  (console/status "Downloading fresh default checks...")
   (let [dl-result (download-checks!)]
     (when (result/failure? dl-result)
       (throw (ex-info (:error dl-result) (:context dl-result)))))
@@ -205,24 +183,24 @@
   (if config-backup
     (do
       (file-utils/atomic-spit config-file config-backup)
-      (println "Preserved your config.edn"))
+      (console/status "Preserved your config.edn"))
     (do
       (create-default-config-entry!)
-      (println "Created config.edn with default check entry")))
+      (console/status "Created config.edn with default check entry")))
 
   (when ignore-backup
     (file-utils/atomic-spit ignore-file ignore-backup)
-    (println "Preserved your ignore.edn"))
+    (console/status "Preserved your ignore.edn"))
 
-  (println "\nDefault checks restored successfully.")
-  (println "\nYour custom checks in ~/.proserunner/custom/ were not modified."))
+  (console/status "Default checks restored.")
+  (console/status "Your custom checks in ~/.proserunner/custom/ were not modified."))
 
 (defn restore-defaults!
   "Restore default checks from GitHub, backing up existing checks first.
 
   Returns Result<nil> - Success when complete, Failure on error."
   []
-  (println "\n=== Restoring Default Checks ===\n")
+  (console/status "Restoring default checks...")
   (result/try-result-with-context
    (fn []
      (let [proserunner-dir (sys/filepath ".proserunner")
@@ -233,14 +211,14 @@
        ;; Check if .proserunner directory exists
        (if-not (.exists (io/file proserunner-dir))
          (do
-           (println "No .proserunner directory found. Creating fresh installation...")
+           (console/status "No .proserunner directory found. Creating fresh installation...")
            (let [dl-result (download-checks!)]
              (if (result/failure? dl-result)
                (throw (ex-info (:error dl-result) (:context dl-result)))
                (do
-                 (println "\nDefault checks installed.")
+                 (console/status "Default checks installed.")
                  (create-default-config-entry!)
-                 (println "Created config.edn with default check entry")))))
+                 (console/status "Created config.edn with default check entry")))))
          ;; Otherwise, backup and restore
          (let [{:keys [config-backup ignore-backup]}
                (backup-and-preserve-files default-dir config-file ignore-file)]
@@ -254,29 +232,16 @@
 
    Returns Result with config on success, or Failure with error details."
   [default-config]
-  (println "Initializing Proserunner...")
+  (console/status "First run: setting up ~/.proserunner")
   (let [dl-result (download-checks!)]
     (if (result/failure? dl-result)
       (result/map-err dl-result #(str "Failed to download default checks: " %))
       (do
-        (println "Created Proserunner directory: " (sys/filepath ".proserunner/"))
-        (println "You can store custom checks in: " (sys/filepath ".proserunner" "custom/"))
+        (console/status "Created Proserunner directory: " (sys/filepath ".proserunner/"))
+        (console/status "You can store custom checks in: " (sys/filepath ".proserunner" "custom/"))
+        (console/status "To update the default checks later, run: proserunner --restore-defaults")
         (create-default-config-entry!)
         (loader/load-config-from-file default-config)))))
-
-(defn update-default-checks
-  "Refreshes default checks when remote version is newer than local cache."
-  [default-config]
-  (println "Updating default checks...")
-  (let [dl-result (download-checks!)]
-    (if (result/failure? dl-result)
-      (do
-        (println "Warning: Failed to update checks:" (:error dl-result))
-        (println "Continuing with existing checks...")
-        (result/result-or-exit (loader/load-config-from-file default-config)))
-      (do
-        (println "Checks updated.")
-        (result/result-or-exit (loader/load-config-from-file default-config))))))
 
 (defn default
   "If current config isn't valid, use the default."
@@ -298,7 +263,7 @@
     (if (seq missing)
       (if (contains? missing "default")
         (do
-          (println "Default checks not found. Downloading...")
+          (console/status "Default checks not found.")
           (let [default-config (sys/filepath ".proserunner" "config.edn")
                 init-result (initialize-proserunner default-config)]
             (if (result/success? init-result)
@@ -336,30 +301,24 @@
 (defn determine-config-strategy
   "Determines config loading strategy based on inputs.
 
-  Returns strategy keyword: :custom | :project | :update-stale | :global | :initialize
+  Returns strategy keyword: :custom | :project | :global | :initialize
 
   Context map keys:
   - :using-default? - Is the default config path being used?
   - :custom-exists? - Does the custom config file exist?
   - :in-project? - Is the current directory in a project?
   - :config-exists? - Does the global config file exist?
-  - :checks-stale? - Are the default checks outdated?
 
-  Project directory takes precedence over stale checks to ensure project-specific
-  config is used even when global checks are outdated."
-  [{:keys [using-default? custom-exists? in-project? config-exists? checks-stale?]}]
+  Default checks are never updated implicitly; --restore-defaults does that."
+  [{:keys [using-default? custom-exists? in-project? config-exists?]}]
   (cond
     ;; Custom config file specified via -c
     (and (not using-default?) custom-exists?)
     :custom
 
-    ;; In project directory (must come before stale check)
+    ;; In project directory
     (and using-default? in-project?)
     :project
-
-    ;; Using default config and checks need updating
-    (and using-default? config-exists? checks-stale?)
-    :update-stale
 
     ;; Global config exists
     config-exists?
@@ -371,7 +330,9 @@
 
 (defn fetch-or-create!
   "Fetches or creates config file. Will exit on failure.
-   Automatically checks for updates to default checks.
+   Downloads default checks on first run only; it doesn't check for
+   updates, so results don't change between runs unless the user runs
+   --restore-defaults.
 
    If in a project directory, loads project config which may include
    project-specific checks and ignores merged with global config."
@@ -396,11 +357,9 @@
                      {:using-default? using-default?
                       :custom-exists? custom-exists?
                       :in-project? in-project?
-                      :config-exists? config-exists?
-                      :checks-stale? (checks-stale?)})]
+                      :config-exists? config-exists?})]
       (case strategy
         :custom (result/result-or-exit (loader/load-config-from-file config-filepath))
         :project (result/result-or-exit (load-project-based-config current-dir))
-        :update-stale (update-default-checks default-config)
         :global (result/result-or-exit (loader/load-config-from-file default-config))
         :initialize (result/result-or-exit (loader/load-config-from-file default-config))))))

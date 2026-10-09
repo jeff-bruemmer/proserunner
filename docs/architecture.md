@@ -84,12 +84,13 @@ First run downloads default checks from GitHub.
 
 **Storage:**
 
-- `~/.proserunner/checks/` - Global checks
+- `~/.proserunner/default/` - Default checks (downloaded on first run)
+- `~/.proserunner/custom/` - Your global custom checks
 - `~/.proserunner/config.edn` - Global config
 - `~/.proserunner/ignore.edn` - Global ignores
-- `.proserunner/config.edn` - Project config
-- `.proserunner/ignore.edn` - Project ignores (commit this)
-- `~/.proserunner/cache/` - Cache
+- `.proserunner/config.edn` - Project config, including project ignores (commit this)
+- `.proserunner/checks/` - Project checks
+- `$XDG_CACHE_HOME/proserunner/` - Cache (see [usage](usage.md#cache) for the full lookup order)
 
 **Smart defaults**: `--ignore-issues` uses project scope if `.proserunner/` exists, else global. Override with `--global` or `--project`.
 
@@ -210,7 +211,7 @@ Hash-based invalidation ([vet/cache.clj](../src/proserunner/vet/cache.clj)):
 
 Cache hits need all three hashes to match. Partial match (checks same, lines changed) = incremental update. Only processes changed lines, reuses cached results.
 
-Cache lives at `~/.proserunner/cache/`.
+Cache lives at `$XDG_CACHE_HOME/proserunner/` by default; see [usage](usage.md#cache) for the full lookup order.
 
 ### Parallelism
 

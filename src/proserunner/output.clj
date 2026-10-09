@@ -43,23 +43,33 @@
   [results output]
   (case (string/lower-case output)
     "edn" (pp/pprint results)
-    "json" (json/generate-stream results *out*)
+    "json" (do (json/generate-stream results *out*)
+               (newline))
     "group" (format/group-numbered results)
+    "plain" (format/plain-numbered results)
     "verbose" (format/verbose results)
     (format/table-numbered results)))
 
 (defn out
   "Takes results, preps them, removes specimens to ignore, and
-  prints them in the supplied output format."
+  prints them in the supplied output format.
+  Returns the number of issues printed."
   [payload]
   (let [{:keys [results output check-dir config project-ignore project-ignore-issues]} payload]
-    (cond
-      (empty? results) nil
-      (some? results)
+    (if (empty? results)
+      0
       (let [ignore-map (load-ignore-set project-ignore project-ignore-issues check-dir config)
             final-results (process-results (:results results) ignore-map)]
-        (format-output final-results output))
-      :else nil)))
+        (format-output final-results output)
+        (count final-results)))))
+
+(defn summary
+  "One line describing a run, e.g. \"Checked 2 files, found 5 issues.\""
+  [issue-count file-count]
+  (let [n (fn [count word] (str count " " word (when (not= 1 count) "s")))]
+    (str "Checked " (n file-count "file") ", found "
+         (if (zero? issue-count) "no issues" (n issue-count "issue"))
+         ".")))
 
 ;; Re-export time-elapsed for backward compatibility with core.clj
 (def time-elapsed prep/time-elapsed)

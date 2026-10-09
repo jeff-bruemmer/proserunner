@@ -1,6 +1,7 @@
 (ns editors.utilities
   "Shared utilities for creating editor functions that detect and report issues in text."
-  (:require [proserunner.text :as text]
+  (:require [proserunner.console :as console]
+            [proserunner.text :as text]
             [clojure.string :as string])
   (:gen-class))
 
@@ -22,7 +23,7 @@
            (#(str leftb % ")\\b"))
            (re-pattern)))
     (catch java.util.regex.PatternSyntaxException e
-      (println (str "Warning: Invalid regex pattern '" re-payload "': " (.getMessage e)))
+      (console/warn "Invalid regex pattern '" re-payload "': " (.getMessage e))
       nil)))
 
 (defn seek

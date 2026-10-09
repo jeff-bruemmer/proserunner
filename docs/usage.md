@@ -6,19 +6,24 @@ Everything you need to use Proserunner.
 
 ```bash
 # Check files - issues get numbers
-proserunner --file /path/to/file
+proserunner document.md
+proserunner docs/ README.md        # Several paths, or a shell glob like *.md
 # Output:
 # document.md
 # [1]  10:5   "utilize"  -> Consider using "use" instead.
 # [2]  15:12  "leverage" -> Consider using "use" instead.
+# Checked 1 file, found 2 issues.   (on stderr)
 
 # Ignore by number
-proserunner --file document.md --ignore-issues 1,3
-proserunner --file document.md --ignore-issues 1-3,5  # Ranges work too
+proserunner document.md --ignore-issues 1,3
+proserunner document.md --ignore-issues 1-3,5  # Ranges work too
 
 # Ignore everything currently showing
-proserunner --file document.md --ignore-all
-proserunner --file document.md --ignore-all --global  # Force global scope
+proserunner document.md --ignore-all
+proserunner document.md --ignore-all --global  # Force global scope
+
+# One issue per line, for grep or your editor
+proserunner docs/ -o plain
 
 # Ignore a word everywhere
 proserunner --add-ignore "hopefully"
@@ -28,12 +33,36 @@ proserunner --audit-ignores
 proserunner --clean-ignores
 
 # Check quoted dialogue too
-proserunner --file document.md --quoted-text
+proserunner document.md --quoted-text
 
 # Skip files/directories
-proserunner --file docs/ --exclude "drafts/*"
-proserunner --file docs/ --exclude "drafts/*,*.backup,temp.md"  # Comma-separated
+proserunner docs/ --exclude "drafts/*"
+proserunner docs/ --exclude "drafts/*,*.backup,temp.md"  # Comma-separated
 ```
+
+`--file PATH` still works and means the same as passing `PATH`.
+
+## Output and exit status
+
+Lint results go to **stdout**. Status messages, warnings, errors, the summary line, and `--timer` go to **stderr**, so piping the results never picks up anything else.
+
+| `--output` | What you get |
+| --- | --- |
+| `group` (default) | Issues grouped under each file name, numbered |
+| `plain` | One issue per line: `path:line:col: [n] "specimen" -> message`. Works with grep, vim's quickfix, and Emacs compile-mode |
+| `table` | A bordered table |
+| `verbose` | Markdown report with fixes |
+| `json`, `edn` | Machine-readable; `[]` / `()` when there are no issues |
+
+| Exit status | Meaning |
+| --- | --- |
+| `0` | No issues found |
+| `1` | Issues found |
+| `2` | Error: bad flags, missing or unsupported files, broken config |
+
+So in CI, `proserunner docs/` fails the build when there are issues. Add `--quiet` to drop the status messages and summary line (errors still print).
+
+Running `proserunner` with no arguments prints a short usage message; `proserunner --help` prints everything. `-h` works at the end of any command line.
 
 ## Default checks
 
@@ -162,9 +191,18 @@ Issue numbers are only valid for the current run. The system stores the actual l
 ### Clean up ignores
 
 ```bash
-proserunner --audit-ignores  # Find stale ones
+proserunner --audit-ignores  # Find stale ones (changes nothing)
 proserunner --clean-ignores  # Remove them
 ```
+
+### Clear all ignores
+
+```bash
+proserunner --clear-ignored          # Asks first when run in a terminal
+proserunner --clear-ignored --force  # Don't ask
+```
+
+Clears the project list inside a project, otherwise the global list. Add `--global` or `--project` to choose.
 
 ### Edit manually
 
@@ -193,13 +231,9 @@ proserunner --file document.md --skip-ignore
 
 Useful for auditing all issues without filters.
 
-### Custom ignore file
+### `--ignore` (deprecated)
 
-```bash
-proserunner --ignore my-ignores  # Use different ignore file name
-```
-
-Default is `ignore.edn` - this lets you use different names.
+`--ignore NAME` never had an effect and now prints a warning. Use `--skip-ignore` for a run without ignores, or `.proserunnerignore` / `--exclude` to skip files.
 
 ## Project config
 
@@ -255,19 +289,24 @@ Creates `.proserunner/` with `config.edn` and `checks/`.
 proserunner --file document.md --config /path/to/config.edn
 ```
 
-Overrides both global and project configs for this run. Useful for testing different setups.
+Overrides both global and project configs for this run, including inside a project. Useful for testing different setups. The file must exist.
 
 ## Cache
 
 Proserunner caches results for speed. Only re-checks files when content, config, or checks change.
 
-**Location:** `~/.proserunner/cache/`
+**Location**, first match wins:
+
+1. `--cache-dir DIR`
+2. `$PROSERUNNER_CACHE_DIR`
+3. `$XDG_CACHE_HOME/proserunner` (usually `~/.cache/proserunner`)
+4. `$TMPDIR/proserunner-storage` (or the JVM temp dir if `TMPDIR` is unset)
 
 **Clear cache:**
 
 ```bash
-proserunner --file document.md --no-cache  # Skip cache for this run
-rm -rf ~/.proserunner/cache/               # Delete cache manually
+proserunner document.md --no-cache  # Recompute for this run
+rm -rf ~/.cache/proserunner/        # Delete cache manually (adjust for your location)
 ```
 
 **Cache invalidation triggers:**
@@ -359,13 +398,24 @@ Use it:
 
 See `src/editors/` for examples.
 
-## Reset to defaults
+## Reset or update default checks
 
 ```bash
 proserunner --restore-defaults
 ```
 
 Backs up current, downloads fresh defaults, keeps your custom stuff.
+
+Default checks are downloaded from GitHub once, on first run. After that, Proserunner never contacts the network on its own, so results don't change between runs. Run `--restore-defaults` when you want the latest checks.
+
+## Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `PROSERUNNER_CACHE_DIR` | Cache directory (see [Cache](#cache)) |
+| `XDG_CACHE_HOME` | Cache goes in `$XDG_CACHE_HOME/proserunner` |
+| `TMPDIR` | Fallback cache location |
+| `PROSERUNNER_DEBUG` | Any non-empty value prints error details and stack traces |
 
 ## Performance baselines
 

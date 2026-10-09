@@ -4,13 +4,15 @@
   (:require [proserunner
              [checks :as checks]
              [config :as conf]
+             [console :as console]
              [path-ignore :as path-ignore]
              [project-config :as project-conf]
              [result :as result]
              [storage :as store]
              [system :as sys]
              [text :as text]]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as string]))
 
 (set! *warn-on-reflection* true)
 
@@ -35,15 +37,23 @@
      :patterns (concat exclude-patterns ignore-patterns)}))
 
 (defn filter-valid-files
-  "Discovers files to check, respecting ignore patterns and supported file types."
+  "Discovers files to check, respecting ignore patterns and supported file types.
+  Fails, naming the path, when there is nothing to check."
   [file {:keys [base-dir patterns]}]
-  (->> file
-       io/file
-       file-seq
-       (map str)
-       (filter text/supported-file-type?)
-       (remove #(path-ignore/should-ignore? % base-dir patterns))
-       text/handle-invalid-file))
+  (let [files-result (->> file
+                          io/file
+                          file-seq
+                          (map str)
+                          (filter text/supported-file-type?)
+                          (remove #(path-ignore/should-ignore? % base-dir patterns))
+                          text/handle-invalid-file)
+        types (string/join ", " text/supported-files)]
+    (if (result/failure? files-result)
+      (result/err (if (.isDirectory (io/file file))
+                    (str file ": no files to check. Supported types: " types ".")
+                    (str file ": unsupported file type. Supported types: " types "."))
+                  (assoc (:context files-result) :file file))
+      files-result)))
 
 (defn process-files
   "Dispatches to parallel or sequential file processing based on configuration and file count.
@@ -82,10 +92,12 @@
         (process-files files fetch-fn parallel?)))))
 
 (defn- determine-parallel-settings
-  "Determines parallel processing settings from options."
+  "Determines parallel processing settings from options.
+  Files and lines aren't processed in parallel at the same time, so
+  --parallel-files turns off parallel lines."
   [{:keys [parallel-files sequential-lines]}]
   {:parallel-files? (boolean parallel-files)
-   :parallel-lines? (not sequential-lines)})
+   :parallel-lines? (not (or sequential-lines parallel-files))})
 
 (defn- load-config-and-dir
   "Loads configuration and check directory, preferring project config if available.
@@ -171,8 +183,7 @@
         ;; Log corruption warnings
         _ (when (and (result/failure? cached-result)
                     (= :corrupted-cache (get-in cached-result [:context :type])))
-            (println (str "Warning: Corrupted cache detected for file '" (:file normalized) "'"))
-            (println "Clearing corrupted cache and recomputing..."))
+            (console/warn "Corrupted cache for '" (:file normalized) "'; recomputing."))
         cached (result/get-value cached-result)
         loaded {:lines lines :checks (:checks loaded-checks)}]
     (build-input-record {:normalized normalized
@@ -197,7 +208,10 @@
   [options]
   (let [normalized (normalize-input-options options)
         current-dir (System/getProperty "user.dir")
-        project-config (project-conf/load current-dir)
+        ;; An explicit --config replaces both the global and project configs
+        project-config (if (:explicit-config? options)
+                         (assoc (project-conf/load-global-config) :source :global)
+                         (project-conf/load current-dir))
         {:keys [config check-dir]} (load-config-and-dir (:config normalized) project-config)
         project-ignore (if (:skip-ignore normalized) #{} (:ignore project-config))
         project-ignore-issues (if (:skip-ignore normalized) #{} (:ignore-issues project-config))
@@ -247,3 +261,12 @@
       (fn [{:keys [lines loaded-checks]}]
         (combine-loaded-data normalized lines loaded-checks
                             project-ignore project-ignore-issues)))))
+
+(defn count-files
+  "Number of files a check of `file` covers, after exclusions."
+  [file options]
+  (let [{:keys [exclude-patterns]} (normalize-input-options options)
+        files-result (filter-valid-files file (build-ignore-patterns file exclude-patterns))]
+    (if (result/success? files-result)
+      (count (:value files-result))
+      0)))

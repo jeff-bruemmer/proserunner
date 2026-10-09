@@ -1,7 +1,8 @@
 (ns proserunner.custom-checks
   "Functions for adding custom checks from external sources."
   (:gen-class)
-  (:require [proserunner.context :as context]
+  (:require [proserunner.console :as console]
+            [proserunner.context :as context]
             [proserunner.edn-utils :as edn-utils]
             [proserunner.project-config :as project-config]
             [proserunner.config.manifest :as manifest]
@@ -148,7 +149,7 @@
   "Import checks from local directory.
    Returns result map with :target-dir, :check-names, and :count."
   [source target-name project-root]
-  (println (str "Importing from " source "..."))
+  (console/status "Importing from " source "...")
   (if project-root
     (add-checks-to-project-dir source target-name project-root)
     (add-checks-from-directory source target-name)))
@@ -162,12 +163,12 @@
         extra-msg (if (= target :project)
                    "\nThese checks will apply to this project only."
                    "")]
-    (println (str "\nAdded " (:count result) " checks to " scope-name))
-    (println (str "  + " (:target-dir result)))
-    (println (str "  + Updated config: " config-path))
-    (println (str "\nChecks added: " (string/join ", " (:check-names result))))
-    (println extra-msg)
-    (println (str "Use " alt-flag " to add to " alt-scope " instead."))))
+    (console/status "\nAdded " (:count result) " checks to " scope-name)
+    (console/status "  + " (:target-dir result))
+    (console/status "  + Updated config: " config-path)
+    (console/status "\nChecks added: " (string/join ", " (:check-names result)))
+    (console/status extra-msg)
+    (console/status "Use " alt-flag " to add to " alt-scope " instead.")))
 
 (defn add-checks
   "Add checks from a local directory with context-aware targeting.

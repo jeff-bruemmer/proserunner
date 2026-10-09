@@ -138,8 +138,7 @@
                      {:using-default? false
                       :custom-exists? true
                       :in-project? false
-                      :config-exists? false
-                      :checks-stale? false}))
+                      :config-exists? false}))
         "Custom config file via -c flag takes precedence"))
 
   (testing "returns :project when using default and in project directory"
@@ -147,26 +146,15 @@
                       {:using-default? true
                        :custom-exists? false
                        :in-project? true
-                       :config-exists? false
-                       :checks-stale? false}))
+                       :config-exists? false}))
         "Project directory config should be loaded"))
 
-  (testing "returns :update-stale when checks are stale"
-    (is (= :update-stale (config/determine-config-strategy
-                           {:using-default? true
-                            :custom-exists? false
-                            :in-project? false
-                            :config-exists? true
-                            :checks-stale? true}))
-        "Stale checks should trigger update"))
-
-  (testing "returns :global when config exists and not stale"
+  (testing "returns :global when config exists"
     (is (= :global (config/determine-config-strategy
                      {:using-default? true
                       :custom-exists? false
                       :in-project? false
-                      :config-exists? true
-                      :checks-stale? false}))
+                      :config-exists? true}))
         "Global config should be loaded when it exists"))
 
   (testing "returns :initialize when config doesn't exist"
@@ -174,71 +162,52 @@
                          {:using-default? true
                           :custom-exists? false
                           :in-project? false
-                          :config-exists? false
-                          :checks-stale? false}))
+                          :config-exists? false}))
         "Should initialize on first run"))
 
-  (testing "enforces ordering: project takes precedence over stale"
-    ;; Even if checks are stale, project directory should be used
-    (is (= :project (config/determine-config-strategy
-                      {:using-default? true
-                       :custom-exists? false
-                       :in-project? true
-                       :config-exists? true
-                       :checks-stale? true}))
-        "Project check must come before stale check (ordering constraint)"))
-
   (testing "enforces ordering: project takes precedence over global"
-    ;; Even if global config exists, project directory should be used
     (is (= :project (config/determine-config-strategy
                       {:using-default? true
                        :custom-exists? false
                        :in-project? true
-                       :config-exists? true
-                       :checks-stale? false}))
+                       :config-exists? true}))
         "Project check must come before global check"))
 
   (testing "custom config takes precedence over everything"
-    ;; Custom config should win even when in project with stale checks
     (is (= :custom (config/determine-config-strategy
                      {:using-default? false
                       :custom-exists? true
                       :in-project? true
-                      :config-exists? true
-                      :checks-stale? true}))
+                      :config-exists? true}))
         "Custom config via -c flag has highest precedence"))
 
-  (testing "all five branches are reachable"
-    ;; Verify all strategy keywords are returned in at least one scenario
-    (let [strategies #{(config/determine-config-strategy
-                         {:using-default? false
-                          :custom-exists? true
-                          :in-project? false
-                          :config-exists? false
-                          :checks-stale? false})  ; :custom
-                      (config/determine-config-strategy
-                        {:using-default? true
-                         :custom-exists? false
-                         :in-project? true
-                         :config-exists? false
-                         :checks-stale? false})   ; :project
-                      (config/determine-config-strategy
-                        {:using-default? true
-                         :custom-exists? false
-                         :in-project? false
-                         :config-exists? true
-                         :checks-stale? true})    ; :update-stale
-                      (config/determine-config-strategy
-                        {:using-default? true
-                         :custom-exists? false
-                         :in-project? false
-                         :config-exists? true
-                         :checks-stale? false})   ; :global
-                      (config/determine-config-strategy
-                        {:using-default? true
-                         :custom-exists? false
-                         :in-project? false
-                         :config-exists? false
-                         :checks-stale? false})}] ; :initialize
-      (is (= #{:custom :project :update-stale :global :initialize} strategies)
-          "All five strategy branches are tested and reachable"))))
+  (testing "there is no implicit update strategy"
+    (let [strategies (set (for [using-default? [true false]
+                                custom-exists? [true false]
+                                in-project? [true false]
+                                config-exists? [true false]]
+                            (config/determine-config-strategy
+                              {:using-default? using-default?
+                               :custom-exists? custom-exists?
+                               :in-project? in-project?
+                               :config-exists? config-exists?})))]
+      (is (= #{:custom :project :global :initialize} strategies)
+          "All four strategy branches are reachable, and none updates checks"))))
+
+(deftest fetch-or-create-makes-no-network-calls-test
+  (testing "loading an existing global config never contacts GitHub"
+    (let [home (str (System/getProperty "java.io.tmpdir") "/proserunner-nonet-" (System/nanoTime))
+          proserunner-dir (java.io.File. home ".proserunner")]
+      (try
+        (.mkdirs (java.io.File. proserunner-dir "default"))
+        (spit (java.io.File. proserunner-dir "config.edn") "{:checks []}")
+        (let [calls (atom [])]
+          (with-redefs [proserunner.system/home-dir (constantly home)
+                        babashka.http-client/get (fn [url & _]
+                                                   (swap! calls conj url)
+                                                   {:status 500})]
+            (is (some? (config/fetch-or-create! (str home "/.proserunner/config.edn"))))
+            (is (empty? @calls) "no HTTP requests during a lint")))
+        (finally
+          (doseq [f (reverse (file-seq (java.io.File. home)))]
+            (.delete ^java.io.File f)))))))

@@ -82,7 +82,7 @@
 (deftest test-basic-functionality
   (testing "Binary can process a simple markdown file"
     (let [test-file "resources/benchmark-data/small.md"
-          result (shell/sh *binary-path* "check" test-file)
+          result (shell/sh *binary-path* test-file)
           {:keys [exit err]} result]
       (is (contains? #{0 1} exit)
           "Check command should exit with 0 (pass) or 1 (fail), not crash")

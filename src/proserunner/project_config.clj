@@ -22,7 +22,7 @@
   [start-dir]
   (str "No project configuration found"
        "\nSearched from: " start-dir
-       "\nTo create a project configuration, run: proserunner init"))
+       "\nTo create a project configuration, run: proserunner --init-project"))
 
 (defn- conflicting-flags-error
   "Builds error for conflicting --global and --project flags."

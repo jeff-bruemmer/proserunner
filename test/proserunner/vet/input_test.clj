@@ -60,8 +60,9 @@
 
 (deftest determine-parallel-settings-test
   (testing "Determines parallel settings from options"
-    (is (= {:parallel-files? true :parallel-lines? true}
-           (#'input/determine-parallel-settings {:parallel-files true})))
+    (is (= {:parallel-files? true :parallel-lines? false}
+           (#'input/determine-parallel-settings {:parallel-files true}))
+        "parallel files turns off parallel lines")
     (is (= {:parallel-files? false :parallel-lines? false}
            (#'input/determine-parallel-settings {:sequential-lines true})))
     (is (= {:parallel-files? false :parallel-lines? true}
@@ -348,12 +349,12 @@
           normalized (input/normalize-input-options opts)]
       (is (false? (:parallel-lines? normalized)))))
 
-  (testing "parallel-files without sequential-lines enables both"
+  (testing "parallel-files without sequential-lines processes lines sequentially"
     (let [opts {:parallel-files true}
           normalized (input/normalize-input-options opts)]
       (is (true? (:parallel-files? normalized)))
-      (is (true? (:parallel-lines? normalized))
-          "parallel-lines should default to true")))
+      (is (false? (:parallel-lines? normalized))
+          "files and lines aren't both parallel")))
 
   (testing "preserves file option"
     (let [opts {:file "test.md"}
