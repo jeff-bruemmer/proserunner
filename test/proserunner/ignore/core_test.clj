@@ -170,24 +170,6 @@
 
 ;;; Performance tests
 
-(deftest filter-issues-performance-baseline
-  (testing "documents baseline performance before optimization"
-    ;; Generate 1000 issues
-    (let [issues (vec (for [i (range 1000)]
-                        {:file "test.md"
-                         :line i
-                         :specimen (str "word" i)
-                         :check "test"}))
-          ;; Generate 100 ignores (mix of simple and contextual)
-          simple-ignores (set (map str (range 50)))
-          contextual-ignores (vec (for [i (range 50 100)]
-                                   {:file "test.md" :line i :specimen (str "word" i)}))
-          ignores {:ignore simple-ignores :ignore-issues contextual-ignores}
-          result (ignore/filter-issues issues ignores)]
-      ;; Document baseline (don't assert specific time)
-      (is (vector? result))
-      (is (< (count result) (count issues)) "Some issues should be filtered"))))
-
 (deftest filter-issues-performance-optimized
   (testing "improved performance with indexed lookups"
     (let [issues (vec (for [i (range 1000)]

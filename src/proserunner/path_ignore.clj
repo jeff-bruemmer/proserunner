@@ -60,14 +60,9 @@
   (not (string/includes? (string/replace pattern #"/+$" "") "/")))
 
 (defn should-ignore?
-  "Checks if a file path should be ignored based on patterns.
-
-  Compares the path relative to base-dir against each glob pattern. Both are
-  made absolute first, since file-seq on a relative directory yields
-  relative paths like ./drafts/x.md while base-dir is absolute.
-  A pattern with a slash (drafts/*) is anchored at base-dir; one without
-  (*.backup, drafts/) matches at any depth.
-  Returns truthy if any pattern matches, nil otherwise."
+  "Returns truthy if file-path, relative to base-dir, matches any glob pattern.
+  Both are made absolute first: file-seq on a relative directory yields
+  relative paths like ./drafts/x.md, while base-dir is absolute."
   [file-path base-dir patterns]
   (let [absolute #(.normalize (.toPath (.getAbsoluteFile (io/file %))))
         ^java.nio.file.Path base (absolute base-dir)

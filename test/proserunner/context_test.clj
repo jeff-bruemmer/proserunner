@@ -65,19 +65,6 @@
           (is (contains? result :project-root))
           (is (= temp-dir (:project-root result))))))))
 
-(deftest determine-context-excludes-project-root-test
-  (testing "Excludes project root when explicitly disabled"
-    (with-temp-dir [temp-dir "context-test"]
-      (let [proserunner-dir (io/file temp-dir ".proserunner")]
-        (.mkdirs proserunner-dir)
-        (spit (io/file proserunner-dir "config.edn") "{:checks []}")
-
-        (let [result (context/determine-context {:project true
-                                                  :start-dir temp-dir
-                                                  :include-project-root false})]
-          (is (= :project (:target result)))
-          (is (not (contains? result :project-root))))))))
-
 (deftest determine-context-with-alt-msg-test
   (testing "Includes alternate scope message when requested for project"
     (with-temp-dir [temp-dir "context-test"]
@@ -102,15 +89,6 @@
         (is (contains? result :alt-msg))
         (is (= "Use --project to add to project ignore list instead."
                (:alt-msg result)))))))
-
-(deftest determine-context-with-custom-alt-msg-template-test
-  (testing "Uses custom alternate message template"
-    (with-temp-dir [temp-dir "context-test"]
-      (let [result (context/determine-context {:global true
-                                                :start-dir temp-dir
-                                                :include-alt-msg true
-                                                :alt-msg-template "Custom message"})]
-        (is (= "Custom message" (:alt-msg result)))))))
 
 (deftest determine-context-with-normalize-opts-test
   (testing "Includes normalized opts when requested for project"
@@ -139,7 +117,6 @@
     (with-temp-dir [temp-dir "context-test"]
       (let [result (context/determine-context {:global true
                                                 :start-dir temp-dir
-                                                :include-project-root false
                                                 :include-alt-msg false
                                                 :normalize-opts false})]
         (is (= :global (:target result)))

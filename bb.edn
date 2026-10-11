@@ -21,7 +21,6 @@
         :task (apply core/-main cli-args)}
 
   ;; Test task
-  ;; Tests tagged ^:native need the GraalVM binary; test-build runs them
   test {:doc "Run Clojure test suite (without the native binary tests)"
         :task (shell "clojure -M:test -e :native")}
 
