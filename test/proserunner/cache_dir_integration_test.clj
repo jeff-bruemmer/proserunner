@@ -3,8 +3,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [proserunner.test-helpers :refer [temp-dir-path delete-recursively create-temp-dir! silently]]
-            [proserunner.core :as core])
-  (:import java.io.File))
+            [proserunner.core :as core]))
 
 (deftest cache-dir-option-creates-cache-in-custom-location
   (testing "Cache files created in directory specified by --cache-dir"

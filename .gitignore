@@ -5,7 +5,9 @@ notes.md
 .DS_Store
 reports
 proserunner.build_artifacts.txt
-.clj-kondo
+.clj-kondo/*
+!.clj-kondo/config.edn
+!.clj-kondo/hooks/
 .lsp
 .calva
 /proserunner

@@ -31,9 +31,6 @@
   (str "https://github.com/jeff-bruemmer/proserunner-default-checks/archive/"
        default-checks-ref ".zip"))
 
-(def default-global-config-template
-  "{:checks []}")
-
 (def default-ignore-template
   "{:ignore #{}\n :ignore-issues #{}}")
 

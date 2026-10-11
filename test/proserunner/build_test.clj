@@ -48,23 +48,23 @@
     (apply shell/sh *binary-path* (str "-Duser.home=" test-home)
            (concat args [:env env]))))
 
-(deftest test-binary-exists
+(deftest ^:native test-binary-exists
   (testing "Native image binary exists"
     (is (.exists (io/file *binary-path*))
         "Binary should exist after build")))
 
-(deftest test-binary-executable
+(deftest ^:native test-binary-executable
   (testing "Native image binary is executable"
     (is (.canExecute (io/file *binary-path*))
         "Binary should have executable permissions")))
 
-(deftest test-binary-runs
+(deftest ^:native test-binary-runs
   (testing "Native image binary executes successfully"
     (let [{:keys [exit]} (run-binary "--version")]
       (is (= 0 exit)
           "Binary should exit with status 0"))))
 
-(deftest test-version-flag
+(deftest ^:native test-version-flag
   (testing "Binary responds to --version flag"
     (let [{:keys [exit out]} (run-binary "--version")]
       (is (= 0 exit) "Version command should succeed")
@@ -72,14 +72,14 @@
       (is (re-find #"\d+\.\d+\.\d+" out)
           "Version output should contain version number"))))
 
-(deftest test-help-flag
+(deftest ^:native test-help-flag
   (testing "Binary responds to --help flag"
     (let [{:keys [exit out]} (run-binary "--help")]
       (is (= 0 exit) "Help command should succeed")
       (is (or (str/includes? out "Usage:") (str/includes? out "USAGE:"))
           "Help output should contain usage information"))))
 
-(deftest test-no-classloader-errors
+(deftest ^:native test-no-classloader-errors
   (testing "Binary doesn't fail with ClassLoader errors"
     (let [{:keys [exit err]} (run-binary "--version")]
       (is (= 0 exit) "Command should succeed")
@@ -88,7 +88,7 @@
       (is (not (str/includes? err "FileNotFoundException"))
           "Should not have FileNotFoundException"))))
 
-(deftest test-basic-functionality
+(deftest ^:native test-basic-functionality
   (testing "Binary can process a simple markdown file"
     (let [test-file "resources/benchmark-data/small.md"
           ;; --no-cache so the file is actually linted

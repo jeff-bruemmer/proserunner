@@ -29,7 +29,7 @@
 
 (defn summary
   "Function supplied to cli/parse-opts to format map of command line options.
-   Map produced sent to ship/print-options."
+   output.usage prints the result as help."
   [summary]
   (->> summary
        ;; combine short and long options, aligning long-only options

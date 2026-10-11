@@ -109,12 +109,19 @@
 
 (defn- resolve-check-entry
   "Resolves a check entry (string reference or map) to concrete check config.
-   - String: looks up in global-checks by directory name
+   - \"checks\": the project's .proserunner/checks/, like {:directory \"checks\"}
+   - Other strings: looks up in global-checks by directory name
    - Map: normalizes and resolves paths
    Returns check config map or nil if resolution fails."
   [entry global-checks project-root]
-  (if (string? entry)
+  (cond
+    (= entry "checks")
+    (normalize-project-check-entry {:directory entry} project-root)
+
+    (string? entry)
     (find-global-check-by-directory entry global-checks)
+
+    :else
     (normalize-project-check-entry entry project-root)))
 
 (defn resolve-check-entries

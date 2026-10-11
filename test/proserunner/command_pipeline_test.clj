@@ -5,14 +5,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [proserunner.commands :as cmd]
             [proserunner.effects :as effects]
-            [proserunner.result :as result]))
-
-(defmacro silently
-  "Suppresses stdout/stderr during test execution."
-  [& body]
-  `(binding [*out* (java.io.StringWriter.)
-             *err* (java.io.StringWriter.)]
-     ~@body))
+            [proserunner.result :as result]
+            [proserunner.test-helpers :refer [silently]]))
 
 ;; Integration Tests: Full Pipeline
 ;; These tests verify the complete flow from options to effect execution

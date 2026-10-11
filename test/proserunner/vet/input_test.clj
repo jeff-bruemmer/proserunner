@@ -39,7 +39,31 @@
           ignore-info (#'input/build-ignore-patterns temp-dir [])]
       (is (map? ignore-info))
       (is (contains? ignore-info :base-dir))
-      (is (contains? ignore-info :patterns)))))
+      (is (contains? ignore-info :patterns))))
+
+  (testing "Adds .proserunnerignore patterns, as strings, after the --exclude ones"
+    (let [temp-dir @test-temp-dir]
+      (.mkdirs (io/file temp-dir))
+      (spit (io/file temp-dir ".proserunnerignore") "# drafts\ndrafts/**\n")
+      (is (= ["*.log" "drafts/**"]
+             (vec (:patterns (#'input/build-ignore-patterns temp-dir ["*.log"]))))))))
+
+(deftest excludes-apply-to-relative-paths
+  (testing "--exclude and .proserunnerignore skip files when the path is relative"
+    (let [temp-dir @test-temp-dir
+          ;; The same directory, relative to the working directory, the way
+          ;; people type it: file-seq then yields relative paths
+          relative (str (.relativize (.toPath (.getAbsoluteFile (io/file "")))
+                                     (.toPath (.getAbsoluteFile (io/file temp-dir)))))]
+      (doseq [f ["keep.md" "drafts/x.md" "skip/y.md"]]
+        (io/make-parents (io/file temp-dir f))
+        (spit (io/file temp-dir f) "Text"))
+      (spit (io/file temp-dir ".proserunnerignore") "skip/**\n")
+      (let [files-result (#'input/filter-valid-files
+                          relative
+                          (#'input/build-ignore-patterns relative ["drafts/**"]))]
+        (is (result/success? files-result))
+        (is (= ["keep.md"] (map #(.getName (io/file %)) (:value files-result))))))))
 
 (deftest filter-valid-files-test
   (testing "Filters for supported file types"

@@ -21,10 +21,10 @@
         :task (apply core/-main cli-args)}
 
   ;; Test task
-  test {:doc "Run Clojure test suite"
-        :task (shell "clojure -M:test")}
+  test {:doc "Run Clojure test suite (without the native binary tests)"
+        :task (shell "clojure -M:test -e :native")}
 
-  test-build {:doc "Run build verification tests"
+  test-build {:doc "Run build verification tests, including the native binary"
               :task (shell "clojure -M:test -n proserunner.build-test")}
 
   ;; Baseline tasks (from tasks/baseline.clj)

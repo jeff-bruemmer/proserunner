@@ -17,16 +17,14 @@
    - :global - Force global scope (the global config directory)
    - :project - Force project scope (.proserunner/)
    - :start-dir - Starting directory for project detection
-   - :include-project-root - Include :project-root in result (default true if :project)
    - :include-alt-msg - Include alternate scope suggestion message
-   - :alt-msg-template - Custom alternate message template
    - :normalize-opts - Return :opts-with-target for command handlers
 
    Returns map with:
    - :target - :global or :project keyword
    - :msg-context - \"global\" or \"project\" string for display
    - :start-dir - Resolved start directory (if applicable)
-   - :project-root - Project root path (if :target is :project and requested)
+   - :project-root - Project root path (if :target is :project)
    - :alt-msg - Alternate scope message (if :include-alt-msg is true)
    - :opts-with-target - Normalized opts map (if :normalize-opts is true)"
   [options]
@@ -35,19 +33,17 @@
         base-context {:target target
                       :msg-context (if (= target :project) "project" "global")
                       :start-dir start-dir}
-        ;; Add project-root if in project context and requested (default true)
-        with-project-root (if (and (= target :project)
-                                   (get options :include-project-root true))
+        ;; Add project-root if in project context
+        with-project-root (if (= target :project)
                             (assoc base-context :project-root
                                    (:project-root (manifest/find start-dir)))
                             base-context)
         ;; Add alternate message if requested
         with-alt-msg (if (:include-alt-msg options)
                        (assoc with-project-root :alt-msg
-                              (or (:alt-msg-template options)
-                                  (if (= target :project)
-                                    "Use --global to add to global ignore list instead."
-                                    "Use --project to add to project ignore list instead.")))
+                              (if (= target :project)
+                                "Use --global to add to global ignore list instead."
+                                "Use --project to add to project ignore list instead."))
                        with-project-root)
         ;; Add normalized opts if requested (for command handlers)
         with-opts (if (:normalize-opts options)

@@ -177,3 +177,12 @@
           result (recommender line check)]
       (is (false? (:issue? result)))
       (is (empty? (:issues result))))))
+
+(deftest seek-after-punctuation
+  (testing "specimens after punctuation are found"
+    (doseq [text ["it is (very good)" "it is *very* good" "it is **very** good"
+                  "it is 'very' good" "and/very" "so: very"]]
+      (is (= ["very"] (util/seek text "very" false)) text)))
+  (testing "specimens in markdown links, after #, -, or _ are skipped"
+    (doseq [text ["[very](link)" "#very" "well-very" "_very_"]]
+      (is (= [] (util/seek text "very" false)) text))))

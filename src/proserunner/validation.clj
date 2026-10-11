@@ -79,27 +79,6 @@
       (validation-ok default-val)
       (validator value))))
 
-;;; High-level validator builders
-
-(defn validator
-  "Builds a validator from a sequence of [predicate error-msg] pairs.
-   Stops at first failing predicate.
-
-   Example:
-     (def checks-validator
-       (validator
-         [nil? \":checks is required\"]
-         [(complement vector?) \"must be a vector\"]
-         [empty? \"cannot be empty\"]))"
-  [& rules]
-  (fn [value]
-    (reduce
-      (fn [_ [pred msg]]
-        (when (pred value)
-          (reduced (validation-error value msg))))
-      (validation-ok value)
-      rules)))
-
 ;;; Field validation aggregation
 
 (defn validate-fields

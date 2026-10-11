@@ -77,8 +77,8 @@
       (is (string? (:error result))
           "Error should be a string"))))
 
-(deftest read-edn-string-with-readers
-  (testing "read-edn-string supports custom EDN readers"
+(deftest read-edn-string-built-in-tags
+  (testing "read-edn-string reads built-in EDN tags like #inst"
     (let [edn-str "#inst \"2024-01-01T00:00:00.000-00:00\""
           result (edn-utils/read-edn-string edn-str)]
 

@@ -53,22 +53,25 @@
     ;; Anchor at the start of the string
     (re-pattern (str "^" escaped))))
 
-(defn should-ignore?
-  "Checks if a file path should be ignored based on patterns.
+(defn- any-depth?
+  "True when pattern has no slash, ignoring a trailing one. Like .gitignore,
+  such a pattern matches at any depth: *.backup also skips sub/a.backup."
+  [pattern]
+  (not (string/includes? (string/replace pattern #"/+$" "") "/")))
 
-  Compares the relative path (from base-dir) against each glob pattern.
-  Returns truthy if any pattern matches, nil otherwise."
+(defn should-ignore?
+  "Returns truthy if file-path, relative to base-dir, matches any glob pattern.
+  Both are made absolute first: file-seq on a relative directory yields
+  relative paths like ./drafts/x.md, while base-dir is absolute."
   [file-path base-dir patterns]
-  (let [relative-path (if (string/starts-with? file-path base-dir)
-                        (subs file-path (count base-dir))
-                        file-path)
-        relative-path (if (string/starts-with? relative-path "/")
-                        (subs relative-path 1)
-                        relative-path)]
+  (let [absolute #(.normalize (.toPath (.getAbsoluteFile (io/file %))))
+        ^java.nio.file.Path base (absolute base-dir)
+        ^java.nio.file.Path path (absolute file-path)
+        relative-path (if (.startsWith path base)
+                        (str (.relativize base path))
+                        file-path)]
     (some (fn [pattern]
-            (let [regex (glob-to-regex pattern)]
-              ;; Use re-find to allow patterns to match anywhere in the path
-              ;; For example, "*.md" matches "file.md" in "dir/file.md"
-              ;; But "*.md" anchored would not match "dir/file.md"
-              (re-find regex relative-path)))
+            ;; glob-to-regex anchors at the start; **/ lets it start at any directory
+            (re-find (glob-to-regex (if (any-depth? pattern) (str "**/" pattern) pattern))
+                     relative-path))
           patterns)))

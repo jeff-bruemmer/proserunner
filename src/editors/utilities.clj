@@ -13,7 +13,9 @@
    Returns nil if pattern is invalid."
   [re-payload case-sensitive?]
   (try
-    (let [ignore-chars "(?:^|[^\\[\\#-_])"
+    ;; Skip specimens right after [, #, _, or -. The - comes last so it's
+    ;; literal; between # and _ it would exclude every character in that range.
+    (let [ignore-chars "(?:^|[^\\[#_-])"
           boundary "\\b("
           leftb (if case-sensitive?
                   ;; Ignore matches in markdown/org links

@@ -50,6 +50,17 @@
           check-entries [{:directory "checks"}]
           resolved (check-resolver/resolve-check-entries check-entries [] project-root)]
       (is (= 1 (count resolved)))
+      (is (= ["custom"] (:files (first resolved))))))
+
+  (testing "The string \"checks\" means the same, not a global directory"
+    (let [project-root @test-project-root
+          checks-dir (str project-root File/separator ".proserunner" File/separator "checks")
+          _ (.mkdirs (io/file checks-dir))
+          _ (spit (str checks-dir File/separator "custom.edn") "{}")
+          global-checks [{:directory "default" :files ["cliches"]}]
+          resolved (check-resolver/resolve-check-entries ["checks"] global-checks project-root)]
+      (is (= 1 (count resolved)))
+      (is (= checks-dir (:directory (first resolved))))
       (is (= ["custom"] (:files (first resolved)))))))
 
 (deftest auto-discover-edn-files

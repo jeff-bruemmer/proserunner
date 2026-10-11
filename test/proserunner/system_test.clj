@@ -21,3 +21,13 @@
   (testing "a root home doesn't turn every path into ~"
     (with-redefs [sys/home-dir (constantly "/")]
       (is (= "/etc/hosts" (sys/display-path "/etc/hosts"))))))
+
+(deftest check-dir-test
+  (binding [*err* (java.io.StringWriter.)]
+    (testing "the directory holding the config file, with a trailing separator"
+      (is (= "/a/b/" (sys/check-dir "/a/b/config.edn"))))
+    (testing "a bare file name means the working directory, not /"
+      (is (= (str (.getAbsolutePath (java.io.File. "")) "/")
+             (sys/check-dir "config.edn"))))
+    (testing "no config means the global config directory"
+      (is (= (str (sys/config-dir) "/") (sys/check-dir nil))))))

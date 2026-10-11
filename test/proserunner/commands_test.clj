@@ -3,6 +3,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [proserunner.commands :as cmd]
+            [proserunner.project-config :as project-config]
             [proserunner.result :as result]
             [proserunner.test-helpers :refer [with-temp-dir]]))
 
@@ -360,88 +361,44 @@
           #"Issue numbers must be positive"
           (#'cmd/parse-range "5-0")))))
 
-(deftest project-exists-test
-  (testing "project-exists? returns true when .proserunner/config.edn exists"
-    (is (boolean? (cmd/project-exists?))))
-
-  (testing "project-exists? returns boolean"
-    (let [result (cmd/project-exists?)]
-      (is (or (true? result) (false? result))))))
-
-(deftest determine-target-test
-  (testing "determine-target returns :global when --global flag is set"
-    (is (= :global (cmd/determine-target {:global true}))))
-
-  (testing "determine-target throws on conflicting flags"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo
-          #"Cannot specify both --global and --project"
-          (cmd/determine-target {:global true :project true}))))
-
-  (testing "determine-target throws when --project flag set but no project exists"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo
-          #"No project configuration found"
-          (cmd/determine-target {:project true}))))
-
-  (testing "determine-target returns keyword :project or :global when auto-detecting"
-    (let [result (cmd/determine-target {})]
-      (is (keyword? result))
-      (is (contains? #{:project :global} result)))))
-
 (deftest get-target-context-test
-  (testing "get-target-context with :project opt returns project context"
-    (let [result (cmd/get-target-context {:project true})]
-      (is (= :project (:target result)))
-      (is (= "project" (:msg-context result)))
-      (is (true? (:project (:opts-with-target result))))
-      (is (not (contains? result :alt-msg)))))
-
-  (testing "get-target-context without :project opt returns global context"
+  (testing "--global targets the global config"
     (let [result (cmd/get-target-context {:global true})]
       (is (= :global (:target result)))
       (is (= "global" (:msg-context result)))
       (is (false? (:project (:opts-with-target result))))
       (is (not (contains? result :alt-msg)))))
 
-  (testing "get-target-context with :include-alt-msg adds alternate message for project"
-    (let [result (cmd/get-target-context {:project true}
-                                         {:include-alt-msg true})]
-      (is (= :project (:target result)))
-      (is (contains? result :alt-msg))
+  (testing "a project found from :start-dir is the default target"
+    (with-temp-dir [dir "target-context"]
+      (project-config/init! dir)
+      (let [result (cmd/get-target-context {:start-dir dir})]
+        (is (= :project (:target result)))
+        (is (= "project" (:msg-context result)))
+        (is (true? (:project (:opts-with-target result))))
+        (is (not (contains? result :alt-msg))))))
+
+  (testing ":include-alt-msg suggests the other scope"
+    (is (= "Use --project to add to project ignore list instead."
+           (:alt-msg (cmd/get-target-context {:global true} {:include-alt-msg true}))))
+    (with-temp-dir [dir "target-context-alt"]
+      (project-config/init! dir)
       (is (= "Use --global to add to global ignore list instead."
-             (:alt-msg result)))))
+             (:alt-msg (cmd/get-target-context {:start-dir dir} {:include-alt-msg true}))))))
 
-  (testing "get-target-context with :include-alt-msg adds alternate message for global"
-    (let [result (cmd/get-target-context {:global true}
-                                         {:include-alt-msg true})]
-      (is (= :global (:target result)))
-      (is (contains? result :alt-msg))
-      (is (= "Use --project to add to project ignore list instead."
-             (:alt-msg result)))))
+  (testing "conflicting flags throw"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+          #"Cannot specify both --global and --project"
+          (cmd/get-target-context {:global true :project true}))))
 
-  (testing "get-target-context with custom :alt-msg-template"
-    (let [result (cmd/get-target-context {:global true}
-                                         {:include-alt-msg true
-                                          :alt-msg-template "Custom message"})]
-      (is (= "Custom message" (:alt-msg result)))))
+  (testing "--project outside a project throws"
+    (with-temp-dir [dir "target-context-none"]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+            #"No project configuration found"
+            (cmd/get-target-context {:project true :start-dir dir})))))
 
-  (testing "get-target-context with :use-determine-target? uses determine-target logic"
-    ;; This will use the actual determine-target function which checks project existence
-    (let [result (cmd/get-target-context {}
-                                         {:use-determine-target? true})]
-      (is (contains? #{:project :global} (:target result)))
-      (is (contains? #{"project" "global"} (:msg-context result)))))
-
-  (testing "get-target-context returns required keys"
-    (let [result (cmd/get-target-context {:project true})]
-      (is (contains? result :target))
-      (is (contains? result :msg-context))
-      (is (contains? result :opts-with-target))
-      (is (map? (:opts-with-target result)))
-      (is (contains? (:opts-with-target result) :project))))
-
-  (testing "get-target-context preserves other options"
-    (let [opts {:project true :some-flag "value" :another-opt 42}
-          result (cmd/get-target-context opts)]
+  (testing "opts-with-target keeps the other options"
+    (let [result (cmd/get-target-context {:global true :some-flag "value" :another-opt 42})]
       (is (= "value" (:some-flag (:opts-with-target result))))
       (is (= 42 (:another-opt (:opts-with-target result)))))))
 
