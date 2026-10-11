@@ -115,8 +115,8 @@
    Returns check config map or nil if resolution fails."
   [entry global-checks project-root]
   (cond
-    (manifest/check-entry-references-checks? entry)
-    (normalize-project-check-entry (if (string? entry) {:directory entry} entry) project-root)
+    (= entry "checks")
+    (normalize-project-check-entry {:directory entry} project-root)
 
     (string? entry)
     (find-global-check-by-directory entry global-checks)

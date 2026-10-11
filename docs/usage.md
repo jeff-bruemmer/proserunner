@@ -291,9 +291,24 @@ proserunner document.md --skip-ignore
 
 Useful for auditing all issues without filters.
 
+### Skip files
+
+```bash
+proserunner docs/ --exclude "drafts/*,*.backup"   # Comma-separated
+```
+
+Or put patterns in a `.proserunnerignore` file in the directory you check, one per line. Lines starting with `#` are comments.
+
+```
+drafts/
+*.backup
+```
+
+Patterns are globs relative to the directory you check. `*` matches within one directory, `**` across directories. A pattern with no slash, or only a trailing one, such as `*.backup` or `drafts/`, matches at any depth, as in `.gitignore`. A pattern with a slash elsewhere, such as `drafts/*`, matches only from the top. A file you name directly is always checked.
+
 ### `--ignore` (deprecated)
 
-`--ignore NAME` (or `-i`) never had an effect and now prints a warning. Use `--skip-ignore` for a run without ignores, or `.proserunnerignore` / `--exclude` to skip files.
+`--ignore NAME` (or `-i`) never had an effect and now prints a warning. Use `--skip-ignore` for a run without ignores, or [`.proserunnerignore` / `--exclude`](#skip-files) to skip files.
 
 ## Project config
 
@@ -478,6 +493,14 @@ Default checks are downloaded from GitHub once, on first run. After that, Proser
 | `TMPDIR` | Fallback cache location |
 | `PROSERUNNER_DEBUG` | Any non-empty value prints error details and stack traces |
 | `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Proxy for downloading the default checks |
+
+## Upgrading from 0.8.0
+
+**More issues.** Words right after `(`, `'`, `*`, `,`, `.`, `/`, or `:` are now checked; 0.8.0 skipped them by mistake. Text that passed before may now report issues and exit 1.
+
+**Skipping files works.** In 0.8.0, `--exclude` skipped nothing when you checked a relative path such as `docs/` or `.`, and `.proserunnerignore` was read but never applied. Check that your patterns skip only what you mean to.
+
+**Patterns without a slash match at any depth**, so `*.backup` also skips `sub/a.backup`. See [Skip files](#skip-files).
 
 ## Upgrading from 0.7
 

@@ -160,6 +160,15 @@
     (is (path-ignore/should-ignore? "docs/notes.log" (.getAbsolutePath (io/file "docs/")) ["*.log"]))
     (is (not (path-ignore/should-ignore? "docs/b.md" (.getAbsolutePath (io/file "docs")) ["drafts/**"])))))
 
+(deftest should-ignore-any-depth
+  (testing "a pattern without a slash matches at any depth, like .gitignore"
+    (is (path-ignore/should-ignore? "/project/docs/sub/a.backup" "/project" ["*.backup"]))
+    (is (path-ignore/should-ignore? "/project/sub/temp.md" "/project" ["temp.md"]))
+    (is (path-ignore/should-ignore? "/project/a/drafts/x.md" "/project" ["drafts/"])))
+  (testing "a pattern with a slash stays anchored at base-dir"
+    (is (path-ignore/should-ignore? "/project/drafts/x.md" "/project" ["drafts/*"]))
+    (is (not (path-ignore/should-ignore? "/project/a/drafts/x.md" "/project" ["drafts/*"])))))
+
 (deftest should-ignore-empty-patterns
   (testing "should-ignore? returns false/nil for empty patterns"
     (is (not (path-ignore/should-ignore?
