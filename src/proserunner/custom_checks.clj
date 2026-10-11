@@ -25,7 +25,7 @@
    :source source-dir
    :type :no-checks-found
    :help ["Expected: Files ending with .edn containing check definitions"
-          "See: docs/checks.md for check file format"]})
+          "See: https://github.com/jeff-bruemmer/proserunner/blob/main/docs/usage.md#check-examples for the check file format"]})
 
 (defn- throw-no-checks-found!
   "Throws formatted error when no checks found."

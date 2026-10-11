@@ -115,17 +115,6 @@
 
 ;;;; Load text and create lines to vet.
 
-(defn get-file-paths
-  "Takes the supplied path and returns a sequence
-  of file names."
-  [path]
-  (->> path
-       io/file
-       file-seq
-       (map str)
-       (filter supported-file-type?)
-       handle-invalid-file))
-
 (defn number-lines
   "Arity conforms to map-indexed spec."
   [idx text]

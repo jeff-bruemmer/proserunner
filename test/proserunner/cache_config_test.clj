@@ -1,5 +1,5 @@
 (ns proserunner.cache-config-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing]]
             [proserunner.cache-config :as cache]))
 
 (deftest test-resolve-cache-path-cli-priority
@@ -81,18 +81,3 @@
   (testing "works with absolute paths"
     (is (= "/home/user/.cache/proserunner/filehash.edn"
            (cache/make-cache-file-path "/home/user/.cache/proserunner" "hash")))))
-
-(deftest test-cache-config
-  (testing "extracts cache-dir from opts"
-    (is (= {:cli-cache-dir "/custom"}
-           (cache/cache-config {:cache-dir "/custom"}))))
-
-  (testing "returns nil cli-cache-dir when not present"
-    (is (= {:cli-cache-dir nil}
-           (cache/cache-config {}))))
-
-  (testing "ignores other opts"
-    (is (= {:cli-cache-dir "/cache"}
-           (cache/cache-config {:cache-dir "/cache"
-                                :file "test.md"
-                                :other-option true})))))

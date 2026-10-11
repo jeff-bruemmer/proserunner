@@ -58,20 +58,3 @@
      (let [content (slurp filepath)]
        (edn/read-string readers-opts content)))
    {:filepath filepath :operation :read-edn-file-with-readers}))
-
-(defn read-edn-string-with-readers
-  "Parses an EDN string with custom readers, returning Result<data>.
-
-  readers-opts should be a map suitable for edn/read-string, e.g.:
-    {:readers {'my.ns.Record map->Record}}
-
-  Returns Success with parsed EDN data, or Failure on parse errors.
-
-  Example:
-    (read-edn-string-with-readers \"#my.Record{:x 1}\" {:readers {'my.Record map->Record}})
-    ;; => #proserunner.result.Success{:value #my.Record{:x 1}}"
-  [edn-str readers-opts]
-  (result/try-result-with-context
-   (fn []
-     (edn/read-string readers-opts edn-str))
-   {:operation :read-edn-string-with-readers}))

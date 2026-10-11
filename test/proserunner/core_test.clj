@@ -5,6 +5,8 @@
             [editors.registry :as registry]
             [editors.repetition :as repetition]
             [editors.utilities :as util]
+            [proserunner.commands]
+            [proserunner.config]
             [proserunner.core :as core]
             [proserunner.effects]
             [proserunner.result :as result]

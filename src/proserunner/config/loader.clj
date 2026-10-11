@@ -26,18 +26,3 @@
                            (assoc parsed :ignore "ignore"))]
        (types/map->Config with-defaults)))
    {:filepath filepath :operation :load-config}))
-
-
-(defn load-config
-  "Parse config EDN string and return Config record.
-  Throws exception on parse error."
-  [edn-string]
-  (try
-    (let [parsed (edn/read-string edn-string)
-          with-defaults (if (contains? parsed :ignore)
-                          parsed
-                          (assoc parsed :ignore "ignore"))]
-      (types/map->Config with-defaults))
-    (catch Exception e
-      (throw (ex-info "Failed to parse config EDN"
-                      {:error (.getMessage e)})))))

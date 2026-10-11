@@ -15,11 +15,11 @@
 
 (defrecord Result
   [lines                      ; Vector of Line records that were vetted
-   ^String lines-hash         ; SHA-256 hash of lines for cache invalidation
-   ^String file-hash          ; SHA-256 hash of file path for cache identification
+   lines-hash                 ; stable-hash of lines, for cache invalidation
+   file-hash                  ; stable-hash of the file path; names the cache file
    config                     ; Config record used for vetting (for reference)
-   ^String config-hash        ; SHA-256 hash of config for cache invalidation
-   ^String check-hash         ; SHA-256 hash of checks for cache invalidation
+   config-hash                ; stable-hash of config, for cache invalidation
+   check-hash                 ; stable-hash of checks, for cache invalidation
    ^String output             ; Output format specification ("group", "table", "json", "edn", "verbose")
    results])                  ; Vector of Line records with issues found (only lines with :issue? true)
 
@@ -81,7 +81,8 @@
                     'proserunner.checks.Expression checks/map->Expression})})
 
 (defn stable-hash
-  "Computes a stable hash that persists across JVM restarts."
+  "Computes a 32-bit hash of data's printed form. It's stable across JVM
+  restarts because Java specifies String hashes. Not a cryptographic hash."
   [data]
   (hash (pr-str data)))
 

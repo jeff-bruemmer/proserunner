@@ -10,6 +10,7 @@
             [proserunner.config :as config]
             [proserunner.config.loader]
             [proserunner.result :as result]
+            [proserunner.system]
             [proserunner.test-helpers :refer [silently with-temp-dir with-temp-dirs with-user-home]]))
 
 (deftest fetch-or-create-input-validation-test

@@ -13,40 +13,22 @@
   The effects namespace executes these descriptions."
   (:gen-class)
   (:require [proserunner.context :as context]
-            [proserunner.config.manifest :as manifest]
             [proserunner.ignore.audit :as ignore-audit]
             [proserunner.output.format :as output-fmt]
             [proserunner.result :as result]
             [proserunner.text :as text]
             [clojure.string :as str]))
 
-(defn project-exists?
-  "Checks if a .proserunner/config.edn file exists in the current directory."
-  []
-  (let [start-dir (System/getProperty "user.dir")]
-    (boolean (manifest/find start-dir))))
-
-(defn determine-target
-  "Determines whether to use :project or :global based on flags and project existence.
-
-  Logic:
-  - If --global flag is explicitly set, use :global
-  - If --project flag is explicitly set, use :project
-  - If .proserunner/config.edn exists, default to :project
-  - Otherwise, default to :global
-
-  Throws ExceptionInfo if both --global and --project are specified, or if
-  --project is specified but no project exists."
-  [opts]
-  (:target (context/determine-context opts)))
+(set! *warn-on-reflection* true)
 
 (defn get-target-context
-  "Returns a map with target scope information for commands.
+  "Resolves whether a command acts on the project or the global config:
+  --global or --project if given, else the project when one is found.
+  Throws ExceptionInfo for --global with --project, or for --project
+  outside a project.
 
   Options:
-  - :use-determine-target? - if true, validates project existence; otherwise uses flags directly
-  - :include-alt-msg - if true, includes :alt-msg suggesting alternate scope
-  - :alt-msg-template - custom alternate message template
+  - :include-alt-msg - if true, includes :alt-msg suggesting the other scope
 
   Returns:
   - :target - either :project or :global keyword
@@ -55,34 +37,11 @@
   - :opts-with-target - opts map with :project key set correctly"
   ([opts]
    (get-target-context opts nil))
-  ([opts {:keys [include-alt-msg alt-msg-template use-determine-target?]}]
-   (if use-determine-target?
-     ;; Full context resolution with project existence validation
-     (let [context-opts (cond-> opts
-                          include-alt-msg (assoc :include-alt-msg true)
-                          alt-msg-template (assoc :alt-msg-template alt-msg-template)
-                          true (assoc :normalize-opts true))
-           result (context/determine-context context-opts)]
-       (cond-> {:target (:target result)
-                :msg-context (:msg-context result)
-                :opts-with-target (:opts-with-target result)}
-         (:alt-msg result) (assoc :alt-msg (:alt-msg result))))
-
-     ;; Simple mode: use flags directly without validation
-     (let [target (if (:project opts) :project :global)
-           msg-context (if (= target :project) "project" "global")
-           base-result {:target target
-                        :msg-context msg-context
-                        :opts-with-target (assoc opts :project (= target :project))}]
-       (if include-alt-msg
-         (assoc base-result :alt-msg
-                (or alt-msg-template
-                    (if (= target :project)
-                      "Use --global to add to global ignore list instead."
-                      "Use --project to add to project ignore list instead.")))
-         base-result)))))
-
-(set! *warn-on-reflection* true)
+  ([opts {:keys [include-alt-msg]}]
+   (-> (cond-> (assoc opts :normalize-opts true)
+         include-alt-msg (assoc :include-alt-msg true))
+       context/determine-context
+       (select-keys [:target :msg-context :opts-with-target :alt-msg]))))
 
 ;;;; Issue number parsing utilities
 
@@ -179,8 +138,7 @@
 (defn handle-add-ignore
   "Handler for adding a specimen to ignore list."
   [{:keys [add-ignore] :as opts}]
-  (let [{:keys [msg-context alt-msg]} (get-target-context opts {:include-alt-msg true
-                                                                  :use-determine-target? true})]
+  (let [{:keys [msg-context alt-msg]} (get-target-context opts {:include-alt-msg true})]
     {:effects [[:ignore/add add-ignore opts]]
      :messages [(format "Added to %s ignore list: %s" msg-context add-ignore)
                 alt-msg]}))
@@ -189,7 +147,7 @@
   "Handler for removing a specimen from ignore list.
   Resolves the scope the same way the effect does, so the message names the right list."
   [{:keys [remove-ignore] :as opts}]
-  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts)]
     {:effects [[:ignore/remove remove-ignore opts-with-target]]
      :messages [(format "Removed from %s ignore list: %s" msg-context remove-ignore)]}))
 
@@ -203,7 +161,7 @@
   "Handler for clearing all ignored specimens.
   The effect confirms interactively and reports what it cleared."
   [opts]
-  (let [{:keys [opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+  (let [{:keys [opts-with-target]} (get-target-context opts)]
     {:effects [[:ignore/clear opts-with-target]]}))
 
 (defn handle-ignore-all
@@ -211,7 +169,7 @@
    Runs the file through proserunner, collects all issues, and adds them as contextual ignores.
    Defaults to project if .proserunner/config.edn exists, otherwise global."
   [opts]
-  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts)]
     {:effects [[:ignore/add-all opts-with-target]]
      :progress [(format "Adding all current findings to %s ignore list..." msg-context)]}))
 
@@ -221,7 +179,7 @@
   contextual ignores for only the specified issue numbers.
   Defaults to project if .proserunner/config.edn exists, otherwise global."
   [{:keys [ignore-issues] :as opts}]
-  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts)
         parse-result (parse-issue-numbers ignore-issues)]
     (if (result/success? parse-result)
       (let [issue-nums (result/get-value parse-result)]
@@ -235,14 +193,14 @@
   "Handler for auditing ignore entries to find stale ones.
   Resolves scope like clean does, so audit previews what clean removes."
   [opts]
-  (let [{:keys [opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+  (let [{:keys [opts-with-target]} (get-target-context opts)]
     {:effects [[:ignore/audit opts-with-target]]
      :format-fn ignore-audit/format-report}))
 
 (defn handle-clean-ignores
   "Handler for cleaning stale ignore entries."
   [opts]
-  (let [{:keys [msg-context opts-with-target]} (get-target-context opts {:use-determine-target? true})]
+  (let [{:keys [msg-context opts-with-target]} (get-target-context opts)]
     {:effects [[:ignore/clean opts-with-target]]
      :progress [(format "Cleaning stale ignores from %s ignore list..." msg-context)]}))
 

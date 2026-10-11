@@ -71,12 +71,10 @@
   "Infer the directory when supplied a config filepath.
   The config file must be in the same directory as the check directories."
   [config]
-  (let [dd (str (config-dir) java.io.File/separator)]
-    (if (nil? config)
-      (do (console/status "Using default directory: " dd)
-          dd)
-      (-> config
-          (string/split (re-pattern java.io.File/separator))
-          drop-last
-          (#(string/join "/" %))
-          (str java.io.File/separator)))))
+  (if (nil? config)
+    (let [dd (str (config-dir) java.io.File/separator)]
+      (console/status "Using default directory: " dd)
+      dd)
+    ;; Absolute, so a bare config.edn means the working directory
+    (str (.getParent (.getAbsoluteFile (java.io.File. ^String config)))
+         java.io.File/separator)))

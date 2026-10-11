@@ -230,11 +230,11 @@ Mutually exclusive (validated in `commands.clj`). Uses Clojure `pmap`.
 Tests in `test/proserunner/`:
 
 ```bash
-bb test              # All tests
-bb test-build        # Build verification
+bb test              # All tests except the native binary ones
+bb test-build        # Build verification, including the native binary (run bb build first)
 ```
 
-Or: `clojure -M:test`. The `:test` alias loads `test-helpers` first, which points `user.home` at a throwaway directory and hides `$XDG_CONFIG_HOME`, so tests never touch your real config.
+Or: `clojure -M:test -e :native`. Tests tagged `^:native` run the GraalVM binary, so they fail until `./proserunner` exists. The `:test` alias loads `test-helpers` first, which points `user.home` at a throwaway directory and hides `$XDG_CONFIG_HOME`, so tests never touch your real config.
 
 ### Updating the default checks
 

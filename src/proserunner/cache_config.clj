@@ -59,11 +59,3 @@
     {:cli-cache-dir (:cache-dir opts)
      :env-vars (System/getenv)
      :system-props (System/getProperties)}))
-
-(defn cache-config
-  "Extracts cache directory from options map.
-
-   DEPRECATED: Use resolve-cache-dir-from-opts for cleaner API.
-   Returns map with :cli-cache-dir for use with resolve-cache-path."
-  [opts]
-  {:cli-cache-dir (:cache-dir opts)})

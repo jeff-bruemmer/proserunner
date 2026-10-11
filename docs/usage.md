@@ -275,8 +275,9 @@ Global (`~/.config/proserunner/ignore.edn`):
 Project (`.proserunner/config.edn`):
 
 ```clojure
-{:ignore #{"project-term"
-           {:file "docs/internal.md" :line-num 5 :specimen "utilize"}}
+{:checks ["default"]
+ :ignore #{"project-term"}                                             ; Simple
+ :ignore-issues #{{:file "docs/internal.md" :line-num 5 :specimen "utilize"}}  ; Contextual
  :ignore-mode :extend}  ; :extend (merge with global) or :replace
 ```
 
@@ -307,20 +308,20 @@ Creates `.proserunner/` with `config.edn` and `checks/`.
 ### Config options
 
 ```clojure
-{:check-sources ["default" "checks"]      ; Where to find checks
+{:checks ["default" "checks"]             ; Where to find checks
  :ignore #{"TODO" "FIXME"}                ; Ignore everywhere
- :ignore-issues [{:file "docs/guide.md"   ; Ignore at specific spots
-                  :line 42
-                  :specimen "very"}]
+ :ignore-issues #{{:file "docs/guide.md"  ; Ignore at specific spots
+                   :line-num 42
+                   :specimen "very"}}
  :ignore-mode :extend                     ; :extend or :replace
  :config-mode :merged}                    ; :merged or :project-only
 ```
 
-**check-sources:**
+**checks** (required):
 
-- `"default"` - Global checks (`~/.config/proserunner/default/`)
+- `"default"` - Global default checks (`~/.config/proserunner/default/`). Any other string names a `:directory` from the global `config.edn`, such as `"custom/style"`
 - `"checks"` - Project checks (`.proserunner/checks/`)
-- Or any path (relative/absolute)
+- `{:directory "path"}` - Any other directory inside the project. Add `:files ["name" ...]` to pick checks (default: every `.edn` file) and `:name` to label them
 
 **ignore:**
 

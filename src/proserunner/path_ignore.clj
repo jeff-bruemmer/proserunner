@@ -56,15 +56,17 @@
 (defn should-ignore?
   "Checks if a file path should be ignored based on patterns.
 
-  Compares the relative path (from base-dir) against each glob pattern.
+  Compares the path relative to base-dir against each glob pattern. Both are
+  made absolute first, since file-seq on a relative directory yields
+  relative paths like ./drafts/x.md while base-dir is absolute.
   Returns truthy if any pattern matches, nil otherwise."
   [file-path base-dir patterns]
-  (let [relative-path (if (string/starts-with? file-path base-dir)
-                        (subs file-path (count base-dir))
-                        file-path)
-        relative-path (if (string/starts-with? relative-path "/")
-                        (subs relative-path 1)
-                        relative-path)]
+  (let [absolute #(.normalize (.toPath (.getAbsoluteFile (io/file %))))
+        ^java.nio.file.Path base (absolute base-dir)
+        ^java.nio.file.Path path (absolute file-path)
+        relative-path (if (.startsWith path base)
+                        (str (.relativize base path))
+                        file-path)]
     (some (fn [pattern]
             (let [regex (glob-to-regex pattern)]
               ;; Use re-find to allow patterns to match anywhere in the path

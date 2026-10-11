@@ -123,18 +123,6 @@
          (println (fmt-row "| " " | " " |" row))))))
   ([rows] (print-table (keys (first rows)) rows)))
 
-(defn print-options
-  "Prints a collection of maps as a left-justified table without borders."
-  ([ks rows]
-   (when (seq rows)
-     (let [widths (col-widths ks rows)
-           fmts (map #(str "%-" % "s") widths)
-           fmt-row (make-row-formatter ks fmts)]
-       (println)
-       (doseq [row rows]
-         (println (fmt-row "  " "   " "  " row))))))
-  ([rows] (print-table (keys (first rows)) rows)))
-
 ;;; Table output with issue numbers
 
 (def ^:private table-columns

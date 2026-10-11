@@ -153,6 +153,13 @@
             base-dir
             patterns)))))
 
+(deftest should-ignore-relative-file-paths
+  (testing "relative paths, as file-seq yields them for `.` or `docs/`, match patterns relative to base-dir"
+    (is (path-ignore/should-ignore? "./drafts/x.md" (.getAbsolutePath (io/file ".")) ["drafts/**"]))
+    (is (path-ignore/should-ignore? "docs/drafts/x.md" (.getAbsolutePath (io/file "docs")) ["drafts/**"]))
+    (is (path-ignore/should-ignore? "docs/notes.log" (.getAbsolutePath (io/file "docs/")) ["*.log"]))
+    (is (not (path-ignore/should-ignore? "docs/b.md" (.getAbsolutePath (io/file "docs")) ["drafts/**"])))))
+
 (deftest should-ignore-empty-patterns
   (testing "should-ignore? returns false/nil for empty patterns"
     (is (not (path-ignore/should-ignore?

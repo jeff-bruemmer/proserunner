@@ -17,7 +17,7 @@
 (set! *warn-on-reflection* true)
 
 (defrecord Input
-  [^String files                ; Path to file(s) being vetted
+  [^String file                 ; File or directory being vetted, or - for standard input
    lines                        ; Vector of Line records to vet
    config                       ; Config record with checks and ignore settings
    checks                       ; Vector of Check records to apply
@@ -32,9 +32,12 @@
   "Merges ignore patterns from CLI flags and .proserunnerignore file for consistent filtering."
   [file exclude-patterns]
   (let [base-dir (-> file io/file .getAbsolutePath)
-        ignore-patterns (path-ignore/read-proserunnerignore base-dir)]
+        ignore-result (path-ignore/read-proserunnerignore base-dir)]
+    (when (result/failure? ignore-result)
+      (console/warn "Couldn't read .proserunnerignore in " file "; using --exclude patterns only: "
+                    (:error ignore-result)))
     {:base-dir base-dir
-     :patterns (concat exclude-patterns ignore-patterns)}))
+     :patterns (concat exclude-patterns (result/get-value ignore-result))}))
 
 (defn filter-valid-files
   "Discovers files to check, respecting ignore patterns and supported file types.

@@ -8,14 +8,7 @@
             [proserunner.effects :as effects]
             [proserunner.ignore.file :as ignore-file]
             [proserunner.result :as result]
-            [proserunner.test-helpers :refer [with-system-property with-temp-dir with-user-home]]))
-
-(defmacro silently
-  "Suppresses stdout/stderr during test execution."
-  [& body]
-  `(binding [*out* (java.io.StringWriter.)
-             *err* (java.io.StringWriter.)]
-     ~@body))
+            [proserunner.test-helpers :refer [silently with-system-property with-temp-dir with-user-home]]))
 
 (deftest execute-effect-unknown-test
   (testing "Unknown effect types return failure"

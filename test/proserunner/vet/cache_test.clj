@@ -155,7 +155,7 @@
                  :parallel-lines 1}
 
           ;; Mock returns results for duplicate lines (they're reprocessed, not cached)
-          mock-process (fn [_checks lines _parallel]
+          mock-process (fn [_checks _lines _parallel]
                          ;; Return issues for duplicate line text
                          (filter #(= "Same text" (:text %))
                                  [{:text "Same text"
