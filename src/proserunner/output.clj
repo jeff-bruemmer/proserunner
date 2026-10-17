@@ -30,8 +30,9 @@
     results
     (ignore-core/filter-issues results ignore-map)))
 
-(defn- process-results
-  "Preps, filters, and sorts results."
+(defn process-results
+  "Preps, filters, and sorts results. Issue numbers are positions in this
+  order, so --ignore-issues uses it too, to ignore the issues it showed."
   [results ignore-map]
   (->> results
        (mapcat prep/prep)

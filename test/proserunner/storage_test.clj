@@ -3,7 +3,8 @@
             [clojure.test :as t :refer [deftest is testing]]
             [proserunner.result :as result]
             [proserunner.storage :as storage]
-            [proserunner.test-helpers :refer [with-temp-dir]])
+            [proserunner.test-helpers :refer [with-temp-dir]]
+            [proserunner.version])
   (:import java.io.File
            java.util.concurrent.CountDownLatch))
 
@@ -190,14 +191,18 @@
 (deftest validation-predicates
   (testing "valid-checks? compares check hashes correctly"
     (let [checks [{:name "test" :kind "existence" :specimens ["foo"]}]
-          check-hash (storage/stable-hash checks)
+          check-hash (storage/checks-hash checks)
           cached-result {:check-hash check-hash}]
 
       (is (storage/valid-checks? cached-result checks)
           "Should return true for matching check hashes")
 
       (is (not (storage/valid-checks? cached-result [{:name "different"}]))
-          "Should return false for different check hashes")))
+          "Should return false for different check hashes")
+
+      (with-redefs [proserunner.version/number "v0.0.0-other"]
+        (is (not (storage/valid-checks? cached-result checks))
+            "Results cached by another version should be recomputed"))))
 
   (testing "valid-lines? compares line hashes correctly"
     (let [lines [{:line-num 1 :text "test"}]

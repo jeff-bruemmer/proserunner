@@ -42,11 +42,6 @@
             (is (result/success? effect-result))))))))
 
 (deftest pipeline-validation-failure-test
-  (testing "Parallel files on its own is valid (it implies sequential lines)"
-    (let [opts {:parallel-files true}
-          validation (cmd/validate-options opts)]
-      (is (result/success? validation))))
-
   (testing "Global and project flags conflict"
     (let [opts {:global true :project true}
           validation (cmd/validate-options opts)]
@@ -54,8 +49,8 @@
       (is (re-find #"global.*project" (:error validation))))))
 
 (deftest pipeline-valid-flags-test
-  (testing "Valid parallel-files with sequential-lines"
-    (let [opts {:parallel-files true :sequential-lines true}
+  (testing "Valid sequential-lines"
+    (let [opts {:sequential-lines true}
           validation (cmd/validate-options opts)]
       (is (result/success? validation))
       (is (= opts (:value validation))))))

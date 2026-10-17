@@ -11,6 +11,7 @@
              [config :as conf]
              [console :as console]
              [custom-checks :as custom]
+             [output :as output]
              [process :as process]
              [project-config :as project-conf]
              [result :as result]
@@ -117,13 +118,6 @@
       updated-ignores)))
 
 
-(defn- extract-prepped-issues
-  "Extracts and preps issues from vet result payload."
-  [payload]
-  (let [results-record (:results payload)
-        lines-with-issues (:results results-record)]
-    (mapcat prep/prep lines-with-issues)))
-
 (defn- load-ignore-map-for-filtering
   "Loads ignore map for filtering, matching what the user saw in output.
   Returns map with :ignore (set) and :ignore-issues (set)."
@@ -134,15 +128,12 @@
      :ignore-issues (or (:project-ignore-issues payload) #{})}))
 
 (defn- select-and-validate-issue-numbers
-  "Filters and validates issues by requested numbers.
+  "Selects issues by requested numbers from issues in numbered order (see
+  output/process-results), and validates the numbers.
   Returns map with :selected-issues, :valid-nums, and :invalid-nums."
-  [all-issues ignore-map issue-nums]
-  (let [filtered-issues (if (and (empty? (:ignore ignore-map)) (empty? (:ignore-issues ignore-map)))
-                          all-issues
-                          (ignore-core/filter-issues all-issues ignore-map))
-        sorted-issues (sort-by (juxt :file :line-num :col-num) filtered-issues)
-        total-issues (count sorted-issues)
-        selected-issues (cmd/filter-issues-by-numbers sorted-issues issue-nums)
+  [numbered-issues issue-nums]
+  (let [total-issues (count numbered-issues)
+        selected-issues (cmd/filter-issues-by-numbers numbered-issues issue-nums)
         valid-nums (set (range 1 (inc total-issues)))
         invalid-nums (remove valid-nums issue-nums)]
     {:selected-issues selected-issues
@@ -245,10 +236,10 @@
        (if (result/failure? vet-result)
          vet-result
          (let [payload (:value vet-result)
-               all-prepped-issues (extract-prepped-issues payload)
-               ignore-map (load-ignore-map-for-filtering payload opts)
+               numbered-issues (output/process-results (get-in payload [:results :results])
+                                                       (load-ignore-map-for-filtering payload opts))
                {:keys [selected-issues total-issues valid-nums invalid-nums]}
-               (select-and-validate-issue-numbers all-prepped-issues ignore-map issue-nums)
+               (select-and-validate-issue-numbers numbered-issues issue-nums)
                ignore-entries (ignore-core/issues->entries selected-issues {:granularity :line})
                _ (update-ignores-by-scope!
                   (fn [ignores]

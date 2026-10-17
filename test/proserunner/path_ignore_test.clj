@@ -160,6 +160,17 @@
     (is (path-ignore/should-ignore? "docs/notes.log" (.getAbsolutePath (io/file "docs/")) ["*.log"]))
     (is (not (path-ignore/should-ignore? "docs/b.md" (.getAbsolutePath (io/file "docs")) ["drafts/**"])))))
 
+(deftest should-ignore-whole-names
+  (testing "a pattern matches whole file and directory names, not prefixes"
+    (is (not (path-ignore/should-ignore? "/project/drafts-old/a.md" "/project" ["drafts"])))
+    (is (not (path-ignore/should-ignore? "/project/draftsman.md" "/project" ["drafts"])))
+    (is (not (path-ignore/should-ignore? "/project/notes.md.txt" "/project" ["*.md"])))
+    (is (not (path-ignore/should-ignore? "/project/temp.md.bak" "/project" ["temp.md"]))))
+  (testing "each form still skips what it names"
+    (doseq [pattern ["drafts" "drafts/" "drafts/*" "drafts/**" "**/drafts"]]
+      (is (path-ignore/should-ignore? "/project/drafts/x.md" "/project" [pattern]) pattern))
+    (is (path-ignore/should-ignore? "/project/notes.md" "/project" ["*.md"]))))
+
 (deftest should-ignore-any-depth
   (testing "a pattern without a slash matches at any depth, like .gitignore"
     (is (path-ignore/should-ignore? "/project/docs/sub/a.backup" "/project" ["*.backup"]))

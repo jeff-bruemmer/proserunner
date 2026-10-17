@@ -51,19 +51,14 @@
       (is (result/success? result))
       (is (= opts (:value result)))))
 
-  (testing "Parallel files without sequential lines is valid"
-    (let [opts {:parallel-files true}
-          result (cmd/validate-options opts)]
-      (is (result/success? result))))
-
   (testing "Both global and project flags fails"
     (let [opts {:global true :project true}
           result (cmd/validate-options opts)]
       (is (result/failure? result))
       (is (re-find #"global.*project" (:error result)))))
 
-  (testing "Parallel files with sequential lines is valid"
-    (let [opts {:parallel-files true :sequential-lines true}
+  (testing "Sequential lines is valid"
+    (let [opts {:sequential-lines true}
           result (cmd/validate-options opts)]
       (is (result/success? result))))
 

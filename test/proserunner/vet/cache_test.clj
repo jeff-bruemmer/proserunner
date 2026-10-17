@@ -19,7 +19,7 @@
                           :file-hash (storage/stable-hash file)
                           :config cfg
                           :config-hash (storage/stable-hash cfg)
-                          :check-hash (storage/stable-hash checks)
+                          :check-hash (storage/checks-hash checks)
                           :results []})
 
           ;; Add a new line
@@ -71,7 +71,7 @@
                           :file-hash (storage/stable-hash file)
                           :config cfg
                           :config-hash (storage/stable-hash cfg)
-                          :check-hash (storage/stable-hash checks)
+                          :check-hash (storage/checks-hash checks)
                           :results [{:text "Unchanged line"
                                      :line-num 1
                                      :issue "test issue"}]})
@@ -134,7 +134,7 @@
                           :file-hash (storage/stable-hash file)
                           :config cfg
                           :config-hash (storage/stable-hash cfg)
-                          :check-hash (storage/stable-hash checks)
+                          :check-hash (storage/checks-hash checks)
                           :results [{:text "Same text"
                                      :line-num 3
                                      :issue "issue on line 3"}

@@ -5,12 +5,11 @@
             [clojure.string :as string])
   (:gen-class))
 
-;; Pattern compilation without caching for optimal parallel performance.
-;; Cache overhead (atom contention) exceeds benefits under parallel workloads.
+(set! *warn-on-reflection* true)
 
 (defn safe-make-pattern
   "Safely compile regex pattern to search for multiple specimens at once.
-   Returns nil if pattern is invalid."
+   Group 1 of a match is the specimen. Returns nil if pattern is invalid."
   [re-payload case-sensitive?]
   (try
     ;; Skip specimens right after [, #, _, or -. The - comes last so it's
@@ -28,27 +27,38 @@
       (console/warn "Invalid regex pattern '" re-payload "': " (.getMessage e))
       nil)))
 
-(defn seek
-  "Given a text, regex, and case sensitivity, returns a vector of regex matches.
-   Returns empty vector if pattern is invalid."
-  [text re-payload case-sensitive?]
-  (let [p (safe-make-pattern re-payload case-sensitive?)]
-    (if (nil? p)
-      []
-      (let [matches (re-seq p text)]
-        (if matches
-          (into [] (map second matches))
-          [])))))
+(defn safe-re-pattern
+  "Safely compile a regex pattern, returning nil if invalid."
+  [re]
+  (try
+    (re-pattern re)
+    (catch java.util.regex.PatternSyntaxException e
+      (console/warn "Invalid regex pattern '" re "': " (.getMessage e))
+      nil)))
 
-(defn find-column-position
-  "Locates specimen in text, trying case-sensitive match first, then case-insensitive.
-   Guards against false positives from legitimate repetition."
-  [text specimen]
-  (or (when (string/includes? text specimen)
-        (string/index-of text specimen))
-      (when-let [idx (string/index-of (string/lower-case text)
-                                     (string/lower-case specimen))]
-        idx)))
+(defn specimens-pattern
+  "Compiles one pattern that finds any of `specimens`."
+  [specimens case-sensitive?]
+  (safe-make-pattern (string/join "|" specimens) case-sensitive?))
+
+(defn find-matches
+  "Returns [text col] for each match of `pattern` in `text`: the text and
+  start of capture `group`. Returns [] when pattern is nil (it didn't compile)."
+  [pattern text group]
+  (if (nil? pattern)
+    []
+    (let [^java.util.regex.Matcher m (re-matcher pattern text)
+          g (int group)]
+      (loop [found []]
+        (if (.find m)
+          (recur (conj found [(.group m g) (.start m g)]))
+          found)))))
+
+(defn seek
+  "Returns [specimen col] for each specimen that `pattern`, made by
+  safe-make-pattern, finds in `text`."
+  [text pattern]
+  (find-matches pattern text 1))
 
 (defn create-issue-record
   "Builds an Issue record with normalized file path for consistent reporting."
@@ -63,59 +73,49 @@
       (update :issues conj issue)))
 
 (defn add-issue
-  "Adds an issue to a text/Line's issues."
-  [{:keys [line specimen name kind message]}]
-  (let [{:keys [file text]} line
-        col (find-column-position text specimen)]
-    (if (nil? col)
-      line
-      (add-issue-to-line line (create-issue-record file name kind specimen col message)))))
+  "Adds an issue for `specimen`, found at column `col`, to a text/Line's issues."
+  [{:keys [line specimen col name kind message]}]
+  (add-issue-to-line line (create-issue-record (:file line) name kind specimen col message)))
+
+(defn add-matches
+  "Adds an issue to `line` for each [specimen col] in `matches`."
+  [line matches {:keys [name kind]} message]
+  (reduce (fn [l [specimen col]]
+            (add-issue {:line l
+                        :specimen specimen
+                        :col col
+                        :name name
+                        :kind kind
+                        :message message}))
+          line
+          matches))
 
 (defn create-issue-collector
-  "Samples lines for each specimen in check, and adds any issues to the line."
+  "Samples lines for each specimen in check, and adds any issues to the line.
+  Uses the check's compiled :pattern (see compile-patterns) when it has one."
   [case-sensitive?]
   (fn
     [line
-     {:keys [file kind specimens message name]}]
+     {:keys [specimens message pattern] :as check}]
     (if (seq specimens)
-      (let [re-core (string/join "|" specimens)
-            matches (seek (:text line) re-core case-sensitive?)]
-        (if (seq matches)
-          (reduce
-           (fn [l match] (add-issue {:file file
-                                    :line l
-                                    :specimen match
-                                    :name name
-                                    :kind kind
-                                    :message message}))
-           line
-           matches)
-          line))
+      (add-matches line
+                   (seek (:text line) (or pattern (specimens-pattern specimens case-sensitive?)))
+                   check
+                   message)
       line)))
 
 (defn create-recommender
   "Returns a function that accepts a boolean to determine whether the
   recommender is case sensitive."
   [case-sensitive?]
-  (fn [line check]
-    (let [{:keys [recommendations name kind]} check]
-      (if (seq recommendations)
-        (reduce (fn [line {:keys [prefer avoid]}]
-                  (let [{:keys [file text]} line
-                        matches (seek text avoid case-sensitive?)]
-                    (if (seq matches)
-                      (reduce (fn [l match] (add-issue {:file file
-                                                       :line l
-                                                       :specimen match
-                                                       :name name
-                                                       :kind kind
-                                                       :message (str "Prefer: " prefer)}))
-                              line
-                              matches)
-                      line)))
-                line
-                recommendations)
-        line))))
+  (fn [line {:keys [recommendations] :as check}]
+    (reduce (fn [line {:keys [prefer avoid pattern]}]
+              (add-matches line
+                           (seek (:text line) (or pattern (safe-make-pattern avoid case-sensitive?)))
+                           check
+                           (str "Prefer: " prefer)))
+            line
+            recommendations)))
 
 (def ^:private editor-specs
   "Specifications for creating standard editors.
@@ -140,3 +140,22 @@
   "Returns a set of all standard editor types available from the factory."
   []
   (set (keys editor-specs)))
+
+(defn compile-patterns
+  "Returns `check` with its regexes compiled, as :pattern on the check (for
+  specimens), on each recommendation, and on each expression. Compile once
+  per run, so editors don't compile them for every line."
+  [{:keys [kind specimens recommendations expressions] :as check}]
+  (let [case-sensitive? (boolean (get-in editor-specs [kind :case-sensitive?]))]
+    (cond-> check
+      (seq specimens)
+      (assoc :pattern (specimens-pattern specimens case-sensitive?))
+
+      (seq recommendations)
+      (assoc :recommendations
+             (mapv #(assoc % :pattern (safe-make-pattern (:avoid %) case-sensitive?))
+                   recommendations))
+
+      (seq expressions)
+      (assoc :expressions
+             (mapv #(assoc % :pattern (safe-re-pattern (:re %))) expressions)))))

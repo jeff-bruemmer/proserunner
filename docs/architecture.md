@@ -41,10 +41,7 @@ Options → Validate → Input → Vet (cached) → Output
 - `Result` - Success/Failure wrapper
 - `Config` - Merged config with enabled checks
 
-**Performance** - two strategies (pick one):
-
-- Default: parallel files, sequential lines (best for many files)
-- `--parallel-lines --sequential-files`: parallel lines, sequential files (best for one big file)
+**Performance**: lines from every file are checked in parallel, with each check's regexes compiled once per run. `--sequential-lines` turns parallelism off for debugging.
 
 ## Main systems
 
@@ -218,12 +215,7 @@ Cache lives at `$XDG_CACHE_HOME/proserunner/` by default; see [usage](usage.md#c
 
 ### Parallelism
 
-Two strategies ([vet/processor.clj](../src/proserunner/vet/processor.clj)):
-
-- **Parallel lines** (off by default): `pmap` lines concurrently
-- **Parallel files** (on by default): Higher-level, multiple files
-
-Mutually exclusive (validated in `commands.clj`). Uses Clojure `pmap`.
+[vet/processor.clj](../src/proserunner/vet/processor.clj) compiles the checks' regexes once, then checks lines with `pmap`. Lines from every file in a directory go through the same `pmap`, so one big file and many small files both use every core. `--sequential-lines` uses `map` instead, for debugging.
 
 ### Testing
 

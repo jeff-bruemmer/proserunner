@@ -7,7 +7,8 @@
              [edn-utils :as edn-utils]
              [file-utils :as file-utils]
              [result :as result]
-             [text :as text]]
+             [text :as text]
+             [version :as version]]
             [proserunner.config.types :as types]
             [clojure.java.io :as io]))
 
@@ -86,6 +87,12 @@
   [data]
   (hash (pr-str data)))
 
+(defn checks-hash
+  "Hashes checks together with the proserunner version, so an upgrade, which
+  may change what the editors report, recomputes cached results."
+  [checks]
+  (stable-hash [version/number checks]))
+
 (defn- handle-corrupted-cache-file
   "Attempts to delete corrupted cache file.
 
@@ -140,7 +147,7 @@
   [cached-result checks]
   (=
    (:check-hash cached-result)
-   (stable-hash checks)))
+   (checks-hash checks)))
 
 (defn valid-lines?
   "Validates that cached lines match current lines by comparing hashes.

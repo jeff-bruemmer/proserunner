@@ -120,7 +120,7 @@
      (storage/stable-hash file)
      config
      (storage/stable-hash config)
-     (storage/stable-hash checks)
+     (storage/checks-hash checks)
      output
      (let [changed-lines (changed cached-line-map lines)]
        (->> (process-fn checks changed-lines parallel-lines)

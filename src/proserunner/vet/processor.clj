@@ -20,6 +20,7 @@
    See: editors.registry for editor registration and dispatch mechanism."
   (:gen-class)
   (:require [editors.registry :as registry]
+            [editors.utilities :as util]
             [proserunner.console :as console]))
 
 (set! *warn-on-reflection* true)
@@ -45,10 +46,12 @@
 
 (defn process
   "Takes `checks` and `lines` and runs each check on each line,
-  return lines with any issues found.
+  return lines with any issues found. Compiles the checks' regexes once
+  here, rather than for every line.
   Uses pmap for parallel processing of lines when parallel? is true."
   [checks lines parallel?]
-  (let [map-fn (if parallel? pmap map)]
+  (let [map-fn (if parallel? pmap map)
+        checks (mapv util/compile-patterns checks)]
     (->> lines
          (map-fn #(reduce dispatch % checks))
          (filter :issue?))))

@@ -35,7 +35,9 @@
    - `?` matches a single character (except `/`)
    - All regex metacharacters are properly escaped
 
-   The resulting pattern is anchored at the start and matches from beginning of path."
+   The resulting pattern is anchored at both ends: it matches whole names, so
+   `drafts` matches drafts/x.md but not drafts-old/x.md. A pattern ending in
+   `/` matches only a directory and what's inside it."
   [pattern]
   (let [escaped (-> pattern
                     ;; First, escape all regex metacharacters (except * and ? which we handle specially)
@@ -50,8 +52,9 @@
                     (string/replace #"/§§DOUBLESTAR§§" "/.*")
                     ;; Standalone ** matches anything
                     (string/replace "§§DOUBLESTAR§§" ".*"))]
-    ;; Anchor at the start of the string
-    (re-pattern (str "^" escaped))))
+    ;; A match must end at a separator or the end of the path. A trailing /
+    ;; already ends at one.
+    (re-pattern (str "^" escaped (when-not (string/ends-with? pattern "/") "(?:/|$)")))))
 
 (defn- any-depth?
   "True when pattern has no slash, ignoring a trailing one. Like .gitignore,

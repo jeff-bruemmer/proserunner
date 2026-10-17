@@ -1,5 +1,5 @@
 (ns editors.utilities-test
-  "Tests for editor utilities including LRU cache."
+  "Tests for editor utilities."
   (:require [editors.utilities :as util]
             [proserunner.text :as text]
             [clojure.test :as t :refer [deftest is testing]]))
@@ -12,30 +12,35 @@
     (let [pattern (util/safe-make-pattern "test|example" true)]
       (is (instance? java.util.regex.Pattern pattern)))))
 
+(defn- seek
+  "util/seek with a pattern made from `re-payload`."
+  [text re-payload case-sensitive?]
+  (util/seek text (util/safe-make-pattern re-payload case-sensitive?)))
+
 (deftest test-seek
-  (testing "Finding specimens in text"
+  (testing "Finding specimens in text, with their columns"
     (let [text "This is a test of the test function."
-          matches (util/seek text "test" false)]
+          matches (seek text "test" false)]
       (is (vector? matches))
-      (is (= 2 (count matches)))
-      ;; Matches include boundary characters (space before word)
-      (is (every? #(re-find #"test" %) matches))))
+      (is (= [["test" 10] ["test" 22]] matches))))
 
   (testing "Case-insensitive matching"
     (let [text "Test this TEST and test."
-          matches (util/seek text "test" false)]
-      ;; Should find at least 2 instances
-      (is (>= (count matches) 2))))
+          matches (seek text "test" false)]
+      (is (= ["Test" "TEST" "test"] (map first matches)))))
 
   (testing "Case-sensitive matching"
     (let [text "Test this test."
-          matches (util/seek text "test" true)]
+          matches (seek text "test" true)]
       (is (= 1 (count matches)))))
 
   (testing "No matches returns empty vector"
     (let [text "This has no specimens."
-          matches (util/seek text "hopefully" false)]
-      (is (empty? matches)))))
+          matches (seek text "hopefully" false)]
+      (is (empty? matches))))
+
+  (testing "An invalid pattern finds nothing"
+    (is (= [] (util/seek "anything" nil)))))
 
 (deftest test-add-issue
   (testing "Adding issue to line"
@@ -48,29 +53,14 @@
                                 :issues []})
           result (util/add-issue {:line line
                                   :specimen "hopefully"
+                                  :col 8
                                   :name "test-check"
                                   :kind "existence"
                                   :message "Test message"})]
       (is (:issue? result))
       (is (= 1 (count (:issues result))))
       (is (= "hopefully" (:specimen (first (:issues result)))))
-      (is (number? (:col-num (first (:issues result)))))))
-
-  (testing "No issue added when specimen not in text"
-    (let [line (text/map->Line {:file "test.md"
-                                :text "This is a test."
-                                :line-num 1
-                                :code? false
-                                :quoted? false
-                                :issue? false
-                                :issues []})
-          result (util/add-issue {:line line
-                                  :specimen "hopefully"
-                                  :name "test-check"
-                                  :kind "existence"
-                                  :message "Test message"})]
-      (is (false? (:issue? result)))
-      (is (empty? (:issues result))))))
+      (is (= 8 (:col-num (first (:issues result))))))))
 
 (deftest test-create-issue-collector
   (testing "Issue collector finds specimens"
@@ -182,7 +172,33 @@
   (testing "specimens after punctuation are found"
     (doseq [text ["it is (very good)" "it is *very* good" "it is **very** good"
                   "it is 'very' good" "and/very" "so: very"]]
-      (is (= ["very"] (util/seek text "very" false)) text)))
+      (is (= ["very"] (map first (seek text "very" false))) text)))
   (testing "specimens in markdown links, after #, -, or _ are skipped"
     (doseq [text ["[very](link)" "#very" "well-very" "_very_"]]
-      (is (= [] (util/seek text "very" false)) text))))
+      (is (= [] (seek text "very" false)) text))))
+
+(defn- line-with
+  [text]
+  (text/map->Line {:file "test.md" :text text :line-num 1 :issue? false :issues []}))
+
+(deftest columns-come-from-the-match
+  (let [existence (util/create-editor "existence")
+        check {:name "adverbs" :kind "existence" :specimens ["very"] :message "m"}
+        cols #(map :col-num (:issues (existence (line-with %) check)))]
+    (testing "a specimen inside an earlier word doesn't move the column"
+      (is (= [14] (cols "Everything is very good."))))
+    (testing "each occurrence on a line gets its own column"
+      (is (= [0 11] (cols "very good, very bad"))))
+    (testing "precompiled and hand-built checks agree"
+      (is (= (existence (line-with "Everything is very good.") check)
+             (existence (line-with "Everything is very good.") (util/compile-patterns check)))))))
+
+(deftest compile-patterns-test
+  (testing "patterns are compiled for specimens, recommendations, and expressions"
+    (let [compiled (util/compile-patterns
+                    {:kind "case-recommender"
+                     :recommendations [{:avoid "Foo" :prefer "Bar"}]})]
+      (is (= [["Foo" 0]] (util/seek "Foo foo" (-> compiled :recommendations first :pattern))))))
+  (testing "an invalid regex leaves a nil pattern, which finds nothing"
+    (let [compiled (util/compile-patterns {:kind "regex" :expressions [{:re "(" :message "m"}]})]
+      (is (nil? (-> compiled :expressions first :pattern))))))

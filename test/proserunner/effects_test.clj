@@ -7,6 +7,7 @@
             [proserunner.console :as console]
             [proserunner.effects :as effects]
             [proserunner.ignore.file :as ignore-file]
+            [proserunner.output :as output]
             [proserunner.result :as result]
             [proserunner.test-helpers :refer [silently with-system-property with-temp-dir with-user-home]]))
 
@@ -262,17 +263,16 @@
       (fn []
         (is (= "/custom/dir" (#'effects/get-project-root {:start-dir "/custom/dir"})))))))
 
-(deftest extract-prepped-issues-test
-  (testing "Extracts and preps issues from vet payload"
-    (let [mock-issue {:file "test.md" :name "test-check" :message "Test issue"
-                     :kind :error :specimen "foo" :col-num 5}
-          mock-line-with-issues {:file "test.md" :line-num 1 :text "This is test text"
-                                 :col-num 5 :issues [mock-issue]}
-          payload {:results {:results [mock-line-with-issues]}}
-          issues (#'effects/extract-prepped-issues payload)]
-      (is (seq issues))
-      (is (every? map? issues))
-      (is (= "test.md" (:file (first issues)))))))
+(deftest ignore-issues-numbering-matches-output-test
+  (testing "--ignore-issues numbers issues in the order output shows them, after ignores"
+    (let [issue (fn [specimen col] {:file "test.md" :name "check" :message "m"
+                                    :kind "existence" :specimen specimen :col-num col})
+          lines [{:line-num 2 :text "b" :issues [(issue "late" 0)]}
+                 {:line-num 1 :text "a" :issues [(issue "second" 9) (issue "ignored" 4) (issue "first" 0)]}]
+          numbered (output/process-results lines {:ignore #{"ignored"} :ignore-issues #{}})
+          {:keys [selected-issues]} (#'effects/select-and-validate-issue-numbers numbered [1 3])]
+      (is (= ["first" "second" "late"] (map :specimen numbered)))
+      (is (= ["first" "late"] (map :specimen selected-issues))))))
 
 (deftest load-ignore-map-for-filtering-test
   (testing "Returns empty map when skip-ignore is true"
@@ -295,8 +295,7 @@
     (let [issues [{:file "test.md" :line-num 1 :col-num 5}
                   {:file "test.md" :line-num 2 :col-num 10}
                   {:file "test.md" :line-num 3 :col-num 15}]
-          ignore-map {:ignore #{} :ignore-issues #{}}
-          result (#'effects/select-and-validate-issue-numbers issues ignore-map [1 3])]
+          result (#'effects/select-and-validate-issue-numbers issues [1 3])]
       (is (= 2 (count (:selected-issues result))))
       (is (= #{1 2 3} (:valid-nums result)))
       (is (= 3 (:total-issues result)))
@@ -304,15 +303,8 @@
 
   (testing "Identifies invalid issue numbers"
     (let [issues [{:file "test.md" :line-num 1 :col-num 5}]
-          ignore-map {:ignore #{} :ignore-issues []}
-          result (#'effects/select-and-validate-issue-numbers issues ignore-map [1 5 10])]
-      (is (= [5 10] (:invalid-nums result)))))
-
-  (testing "Handles empty ignore-map correctly"
-    (let [issues [{:file "test.md" :line-num 1 :col-num 5}]
-          ignore-map {:ignore #{} :ignore-issues []}
-          result (#'effects/select-and-validate-issue-numbers issues ignore-map [1])]
-      (is (= 1 (count (:selected-issues result)))))))
+          result (#'effects/select-and-validate-issue-numbers issues [1 5 10])]
+      (is (= [5 10] (:invalid-nums result))))))
 
 (deftest clear-ignored-warns-scripts-without-force-test
   (with-temp-dir [home "proserunner-clear"]

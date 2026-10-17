@@ -63,3 +63,6 @@
 
 
 
+(deftest re-columns
+  (is (= [17 34] (map :col-num (:issues (re/proofread error-line-double re-checks)))))
+  (is (= [0] (map :col-num (:issues (re/proofread error-heading re-checks))))))

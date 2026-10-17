@@ -156,7 +156,7 @@
         (is (= ["README.md" "docs/usage.md" "LICENSE.txt"] (:paths options)))))))
 
 (deftest reception-with-parallel-and-sequential-test
-  (testing "reception accepts --parallel-files with --sequential-lines (valid combination)"
+  (testing "reception still accepts the retired --parallel-files, with --sequential-lines"
     (with-redefs [proserunner.effects/execute-command-result
                   (fn [_] (result/ok {}))]
       (silently

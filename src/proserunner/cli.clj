@@ -50,7 +50,6 @@
     :validate [(fn [s] (and s (not (str/blank? s))))
                "Cache directory cannot be empty"]]
    [nil "--no-cache" "Skip cache, force re-processing." :default false]
-   [nil "--parallel-files" "Process files concurrently." :default false]
    [nil "--sequential-lines" "Process lines sequentially (for debugging)." :default false]
    [nil "--timer" "Print elapsed time to stderr." :default false]])
 
@@ -69,7 +68,9 @@
    "--add-checks" "proserunner checks add DIR"
    "--restore-defaults" "proserunner checks restore"
    "--init-project" "proserunner init"
-   "--ignore" nil})
+   "--ignore" nil
+   ;; Lines from every file are already checked in parallel
+   "--parallel-files" nil})
 
 (def ^:private deprecated-options
   "Specs for deprecated-flags, hidden from help."
@@ -83,7 +84,8 @@
    [nil "--add-checks SOURCE"]
    [nil "--restore-defaults"]
    [nil "--init-project"]
-   [nil "--ignore IGNORE"]])
+   [nil "--ignore IGNORE"]
+   [nil "--parallel-files"]])
 
 (def deprecated-shorts
   "Single-letter flags retired so letters stay free for common options.

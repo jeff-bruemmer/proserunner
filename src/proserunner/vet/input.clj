@@ -59,14 +59,10 @@
       files-result)))
 
 (defn process-files
-  "Dispatches to parallel or sequential file processing based on configuration and file count.
-
-  fetch-fn returns Result<lines>, this function collects all Results and combines them."
-  [files fetch-fn parallel?]
-  (let [num-files (count files)
-        results (if (and parallel? (> num-files 1))
-                  (doall (pmap fetch-fn files))
-                  (map fetch-fn files))
+  "Reads `files` with fetch-fn, which returns Result<lines>, and combines the
+  Results: the first Failure, or Success with every file's lines."
+  [files fetch-fn]
+  (let [results (map fetch-fn files)
         failures (filter result/failure? results)
         successes (filter result/success? results)]
     (if (seq failures)
@@ -74,18 +70,16 @@
       (result/ok (vec (mapcat :value successes))))))
 
 (defn get-lines-from-all-files
-  "Get lines from all files, optionally processing files in parallel.
-   When parallel? is true, files are processed concurrently using pmap.
+  "Get lines from all files.
 
    Options map keys:
    - :code-blocks - Include code blocks when checking
    - :check-quoted-text - Include quoted text when checking
    - :file - File or directory path to check
    - :exclude-patterns - Vector of glob patterns to exclude
-   - :parallel? - Process files concurrently
 
    Returns Result<lines> - Success with all lines, or Failure on error."
-  [{:keys [code-blocks check-quoted-text file exclude-patterns parallel?]}]
+  [{:keys [code-blocks check-quoted-text file exclude-patterns]}]
   (if (text/stdin? file)
     (do (when (console/interactive?)
           (console/status "Reading from standard input. Press Ctrl-D when done."))
@@ -96,15 +90,7 @@
         files-result
         (let [files (:value files-result)
               fetch-fn #(text/fetch! code-blocks % check-quoted-text)]
-          (process-files files fetch-fn parallel?))))))
-
-(defn- determine-parallel-settings
-  "Determines parallel processing settings from options.
-  Files and lines aren't processed in parallel at the same time, so
-  --parallel-files turns off parallel lines."
-  [{:keys [parallel-files sequential-lines]}]
-  {:parallel-files? (boolean parallel-files)
-   :parallel-lines? (not (or sequential-lines parallel-files))})
+          (process-files files fetch-fn))))))
 
 (defn- load-config-and-dir
   "Loads configuration and check directory, preferring project config if available.
@@ -123,16 +109,16 @@
 
   Converts various option formats to standardized internal representation:
   - Exclude patterns normalized to vector
-  - Parallel settings determined based on flags
+  - Lines are checked in parallel unless --sequential-lines
   - All relevant options passed through
 
   Returns map with normalized keys."
-  [{:keys [file exclude code-blocks quoted-text output no-cache skip-ignore config check-dir] :as options}]
+  [{:keys [file exclude code-blocks quoted-text output no-cache skip-ignore config check-dir
+           sequential-lines]}]
   (let [exclude-patterns (cond
                            (vector? exclude) exclude
                            (string? exclude) [exclude]
-                           :else [])
-        {:keys [parallel-files? parallel-lines?]} (determine-parallel-settings options)]
+                           :else [])]
     {:file file
      :exclude-patterns exclude-patterns
      :code-blocks code-blocks
@@ -140,9 +126,7 @@
      :output output
      :no-cache no-cache
      :skip-ignore skip-ignore
-     :parallel-files? parallel-files?
-     :parallel-lines? parallel-lines?
-     :sequential-lines? (:sequential-lines options)
+     :parallel-lines? (not sequential-lines)
      :config config
      :check-dir check-dir}))
 
@@ -251,8 +235,7 @@
                        {:code-blocks (:code-blocks normalized)
                         :check-quoted-text (:quoted-text normalized)
                         :file (:file normalized)
-                        :exclude-patterns (:exclude-patterns normalized)
-                        :parallel? (:parallel-files? normalized)})
+                        :exclude-patterns (:exclude-patterns normalized)})
         checks-opts (assoc normalized :project-ignore project-ignore)]
     (result/bind lines-result
       (fn [lines]

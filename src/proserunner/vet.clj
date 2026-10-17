@@ -38,7 +38,7 @@
                       :file-hash (store/stable-hash file)
                       :config config
                       :config-hash (store/stable-hash config)
-                      :check-hash (store/stable-hash checks)
+                      :check-hash (store/checks-hash checks)
                       :output output
                       :results (processor/process checks lines parallel-lines)}))
 

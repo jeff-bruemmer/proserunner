@@ -116,7 +116,12 @@
 
   (testing "-i and --ignore have no effect"
     (is (= ["-i is deprecated and has no effect."] (:warnings (parse "-i" "x" "a.md"))))
-    (is (= ["--ignore is deprecated and has no effect."] (:warnings (parse "--ignore" "x" "a.md"))))))
+    (is (= ["--ignore is deprecated and has no effect."] (:warnings (parse "--ignore" "x" "a.md")))))
+
+  (testing "-p and --parallel-files have no effect"
+    (is (= ["-p is deprecated and has no effect."] (:warnings (parse "-p" "a.md"))))
+    (is (= ["--parallel-files is deprecated and has no effect."]
+           (:warnings (parse "--parallel-files" "a.md"))))))
 
 (deftest help-summary-hides-deprecated-flags-test
   (let [shown (set (map :long-opt (:summary (parse))))]

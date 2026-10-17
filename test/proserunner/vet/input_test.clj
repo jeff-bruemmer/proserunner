@@ -82,16 +82,6 @@
                         (re-find #"\.txt$" %))
                    files))))))
 
-(deftest determine-parallel-settings-test
-  (testing "Determines parallel settings from options"
-    (is (= {:parallel-files? true :parallel-lines? false}
-           (#'input/determine-parallel-settings {:parallel-files true}))
-        "parallel files turns off parallel lines")
-    (is (= {:parallel-files? false :parallel-lines? false}
-           (#'input/determine-parallel-settings {:sequential-lines true})))
-    (is (= {:parallel-files? false :parallel-lines? true}
-           (#'input/determine-parallel-settings {})))))
-
 (deftest make-input-test
   (testing "make-input creates Input record from options"
     (let [temp-dir @test-temp-dir
@@ -112,8 +102,8 @@
         (is (some? (:config input)))
         (is (some? (:checks input)))))))
 
-(deftest get-lines-from-files-parallel
-  (testing "Gets lines from files in parallel"
+(deftest get-lines-from-files-multiple
+  (testing "Gets lines from every file in a directory"
     (let [temp-dir @test-temp-dir
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "file1.md") "Line 1")
@@ -122,14 +112,13 @@
                         {:code-blocks false
                          :check-quoted-text false
                          :file temp-dir
-                         :exclude-patterns []
-                         :parallel? true})]
+                         :exclude-patterns []})]
       (is (result/success? lines-result))
       (let [lines (:value lines-result)]
         (is (= 2 (count lines)))))))
 
-(deftest get-lines-from-files-sequential
-  (testing "Gets lines from files sequentially"
+(deftest get-lines-from-files-single
+  (testing "Gets lines from a directory with one file"
     (let [temp-dir @test-temp-dir
           _ (.mkdirs (io/file temp-dir))
           _ (spit (str temp-dir File/separator "file1.md") "Line 1")
@@ -137,8 +126,7 @@
                         {:code-blocks false
                          :check-quoted-text false
                          :file temp-dir
-                         :exclude-patterns []
-                         :parallel? false})]
+                         :exclude-patterns []})]
       (is (result/success? lines-result))
       (let [lines (:value lines-result)]
         (is (= 1 (count lines)))))))
@@ -348,23 +336,16 @@
           normalized (input/normalize-input-options opts)]
       (is (= [] (:exclude-patterns normalized)))))
 
-  (testing "determines parallel settings correctly - both enabled"
-    (let [opts {:parallel-files true :sequential-lines false}
-          normalized (input/normalize-input-options opts)]
-      (is (true? (:parallel-files? normalized)))
-      (is (false? (:sequential-lines? normalized)))))
+  (testing "lines are checked in parallel by default"
+    (is (true? (:parallel-lines? (input/normalize-input-options {})))))
 
   (testing "sequential-lines disables parallel-lines"
     (let [opts {:sequential-lines true}
           normalized (input/normalize-input-options opts)]
       (is (false? (:parallel-lines? normalized)))))
 
-  (testing "parallel-files without sequential-lines processes lines sequentially"
-    (let [opts {:parallel-files true}
-          normalized (input/normalize-input-options opts)]
-      (is (true? (:parallel-files? normalized)))
-      (is (false? (:parallel-lines? normalized))
-          "files and lines aren't both parallel")))
+  (testing "the retired parallel-files option doesn't turn off parallel lines"
+    (is (true? (:parallel-lines? (input/normalize-input-options {:parallel-files true})))))
 
   (testing "preserves file option"
     (let [opts {:file "test.md"}
@@ -399,7 +380,7 @@
   (testing "preserves all options together"
     (let [opts {:file "test.md" :code-blocks true :quoted-text true
                 :output "json" :no-cache true :skip-ignore true
-                :exclude ["*.log"] :parallel-files true :sequential-lines false
+                :exclude ["*.log"] :sequential-lines false
                 :config {:checks []} :check-dir "/path/to/checks"}
           normalized (input/normalize-input-options opts)]
       (is (= "test.md" (:file normalized)))
@@ -409,8 +390,7 @@
       (is (true? (:no-cache normalized)))
       (is (true? (:skip-ignore normalized)))
       (is (= ["*.log"] (:exclude-patterns normalized)))
-      (is (true? (:parallel-files? normalized)))
-      (is (false? (:sequential-lines? normalized)))
+      (is (true? (:parallel-lines? normalized)))
       (is (= {:checks []} (:config normalized)))
       (is (= "/path/to/checks" (:check-dir normalized))))))
 
