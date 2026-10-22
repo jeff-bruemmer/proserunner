@@ -3,7 +3,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [proserunner.test-helpers :refer [temp-dir-path delete-recursively create-temp-dir! silently]]
-            [proserunner.core :as core]))
+            [proserunner.core :as core]
+            [proserunner.vet.processor :as processor]))
 
 (deftest cache-dir-option-creates-cache-in-custom-location
   (testing "Cache files created in directory specified by --cache-dir"
@@ -65,4 +66,22 @@
         (finally
           (delete-recursively (io/file cache-a))
           (delete-recursively (io/file cache-b))
+          (delete-recursively test-file-dir))))))
+
+(deftest cache-dir-option-is-read-back
+  (testing "A second run with the same --cache-dir reuses the cached result"
+    (let [custom-cache (temp-dir-path "cache-read-back")
+          test-file-dir (create-temp-dir! "test-md-files-3")
+          test-file (io/file test-file-dir "sample.md")
+          runs (atom 0)
+          process processor/process]
+      (spit test-file "This is obviously a test file.\n")
+      (try
+        (with-redefs [processor/process (fn [& args] (swap! runs inc) (apply process args))]
+          (dotimes [_ 2]
+            (silently
+              (core/reception ["--cache-dir" custom-cache (.getPath test-file)]))))
+        (is (= 1 @runs) "Only the first run should check lines")
+        (finally
+          (delete-recursively (io/file custom-cache))
           (delete-recursively test-file-dir))))))

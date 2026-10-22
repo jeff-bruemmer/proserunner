@@ -41,7 +41,7 @@ Options → Validate → Input → Vet (cached) → Output
 - `Result` - Success/Failure wrapper
 - `Config` - Merged config with enabled checks
 
-**Performance**: lines from every file are checked in parallel, with each check's regexes compiled once per run. `--sequential-lines` turns parallelism off for debugging.
+**Performance**: lines from every file are checked in parallel, with each check's regexes compiled once per run. Each check scans a line once: a recommender's avoids are combined into one pattern, like an existence check's specimens. `--sequential-lines` turns parallelism off for debugging.
 
 ## Main systems
 

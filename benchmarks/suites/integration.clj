@@ -1,8 +1,9 @@
 (ns benchmarks.suites.integration
   "End-to-end integration benchmarks using real files."
   (:require [benchmarks.core :as bench]
+            [proserunner.result :as result]
+            [proserunner.system :as sys]
             [proserunner.vet :as vet]
-            [proserunner.vet.input :as input]
             [clojure.java.io :as io]
             [editors.registry :as registry]
             [editors.utilities :as util]
@@ -28,16 +29,17 @@
   [file-path config-path description]
   (when (.exists (io/file file-path))
     (let [line-count (count-lines-in-file file-path)
-          input (input/make {:file file-path
-                                :config config-path
-                                :output "table"
-                                :code-blocks false
-                                :no-cache true})]
+          input (bench/make-input {:file file-path
+                                   :config config-path
+                                   :output "table"
+                                   :code-blocks false
+                                   :no-cache true})]
 
       (bench/run-benchmark
        (str "File: " (.getName (io/file file-path)))
        (format "%s (%d lines)" description line-count)
-       #(vet/compute input)
+       ;; :results is lazy; realize it so the checks run inside the timing
+       #(doall (:results (vet/compute input)))
        {:iterations 5
         :warmup 2
         :throughput-fn (fn [_ mean-ms] (/ line-count (/ mean-ms 1000)))
@@ -76,38 +78,42 @@
    "Extra large file"))
 
 (defn benchmark-cache-performance
-  "Benchmark cache hit performance by processing the same file twice."
+  "Benchmark a cache hit: rerunning an unchanged file, from reading it to
+  returning the cached results. Uses a throwaway cache directory."
   [config-path]
   (when (.exists (io/file "resources/benchmark-data/large.md"))
     (let [file-path "resources/benchmark-data/large.md"
-          input (input/make {:file file-path
-                                :config config-path
-                                :output "table"
-                                :code-blocks false
-                                :no-cache false})]
+          cache-dir (str (java.nio.file.Files/createTempDirectory
+                          "proserunner-bench-cache"
+                          (make-array java.nio.file.attribute.FileAttribute 0)))
+          run #(let [r (vet/compute-or-cached {:file file-path
+                                               :config config-path
+                                               :output "table"
+                                               :code-blocks false
+                                               :cache-dir cache-dir})]
+                 (when (result/failure? r)
+                   (throw (ex-info (str "Cached run failed: " (:error r)) {})))
+                 r)]
+      (try
+        ;; First run to populate cache
+        (run)
 
-      ;; First run to populate cache
-      (vet/compute input)
-
-      ;; Benchmark second run with cache
-      (bench/run-benchmark
-       "Cache Performance"
-       "Cached file processing (should be very fast)"
-       #(vet/compute input)
-       {:iterations 10
-        :warmup 2
-        :throughput-fn (fn [_ mean-ms] (/ (count-lines-in-file file-path) (/ mean-ms 1000)))
-        :throughput-unit "lines/sec"}))))
+        (bench/run-benchmark
+         "Cache Performance"
+         "Cached file processing (should be very fast)"
+         run
+         {:iterations 10
+          :warmup 2
+          :throughput-fn (fn [_ mean-ms] (/ (count-lines-in-file file-path) (/ mean-ms 1000)))
+          :throughput-unit "lines/sec"})
+        (finally
+          (run! io/delete-file (reverse (file-seq (io/file cache-dir)))))))))
 
 (defn run-all-integration-benchmarks
   "Run all integration benchmarks and return results."
   []
   (setup-editors!)
-  (let [config-path (str (System/getProperty "user.home")
-                        java.io.File/separator
-                        ".proserunner"
-                        java.io.File/separator
-                        "config.edn")]
+  (let [config-path (sys/config-path "config.edn")]
     (remove nil?
             [(benchmark-small-file config-path)
              (benchmark-medium-file config-path)

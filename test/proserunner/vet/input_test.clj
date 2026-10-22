@@ -347,6 +347,9 @@
   (testing "the retired parallel-files option doesn't turn off parallel lines"
     (is (true? (:parallel-lines? (input/normalize-input-options {:parallel-files true})))))
 
+  (testing "preserves cache-dir option, so the cache is read where it's saved"
+    (is (= "/tmp/cache" (:cache-dir (input/normalize-input-options {:cache-dir "/tmp/cache"})))))
+
   (testing "preserves file option"
     (let [opts {:file "test.md"}
           normalized (input/normalize-input-options opts)]
@@ -543,4 +546,16 @@
                       (is (= "cached.md" file))
                       (proserunner.result/ok {:cached "result"}))]
         (let [input (input/combine-loaded-data normalized lines loaded-checks #{} #{})]
-          (is (= {:cached "result"} (:cached-result input))))))))
+          (is (= {:cached "result"} (:cached-result input)))))))
+
+  (testing "doesn't read the cache with --no-cache"
+    (let [normalized {:file "cached.md" :config {} :check-dir ""
+                     :output "group" :no-cache true :parallel-lines? true}
+          reads (atom 0)]
+      (with-redefs [proserunner.storage/get-cached-result
+                    (fn [_file _opts]
+                      (swap! reads inc)
+                      (proserunner.result/ok {:cached "result"}))]
+        (let [input (input/combine-loaded-data normalized [] {:checks []} #{} #{})]
+          (is (zero? @reads))
+          (is (nil? (:cached-result input))))))))

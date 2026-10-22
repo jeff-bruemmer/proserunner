@@ -2,6 +2,7 @@
   "Tests for editor utilities."
   (:require [editors.utilities :as util]
             [proserunner.text :as text]
+            [proserunner.test-helpers :refer [silently]]
             [clojure.test :as t :refer [deftest is testing]]))
 
 (deftest test-make-pattern
@@ -198,7 +199,39 @@
     (let [compiled (util/compile-patterns
                     {:kind "case-recommender"
                      :recommendations [{:avoid "Foo" :prefer "Bar"}]})]
-      (is (= [["Foo" 0]] (util/seek "Foo foo" (-> compiled :recommendations first :pattern))))))
+      (is (= [["Foo" 0]] (util/seek "Foo foo" (:pattern compiled))))
+      (is (some? (-> compiled :recommendations first :pattern)))))
   (testing "an invalid regex leaves a nil pattern, which finds nothing"
     (let [compiled (util/compile-patterns {:kind "regex" :expressions [{:re "(" :message "m"}]})]
       (is (nil? (-> compiled :expressions first :pattern))))))
+
+(deftest combined-recommenders
+  (let [recommender (util/create-editor "recommender")
+        found (fn [text recommendations]
+                (->> (recommender (line-with text) {:name "r" :kind "recommender"
+                                                    :recommendations recommendations})
+                     :issues
+                     (map (juxt :specimen :col-num :message))))]
+    (testing "each match gets its recommendation's message, in column order"
+      (is (= [["utilize" 2 "Prefer: use"] ["leverage" 14 "Prefer: use, apply"]]
+             (found "I utilize and leverage it."
+                    [{:avoid "leverage" :prefer "use, apply"} {:avoid "utilize" :prefer "use"}]))))
+    (testing "recommendations with the same avoid are each reported"
+      (is (= [["under circumstances in which" 0 "Prefer: if"]
+              ["under circumstances in which" 0 "Prefer: when"]]
+             (found "under circumstances in which we go"
+                    [{:avoid "under circumstances in which" :prefer "if"}
+                     {:avoid "under circumstances in which" :prefer "when"}]))))
+    (testing "an avoid that doesn't compile doesn't stop the others"
+      (is (= [["utilize" 2 "Prefer: use"]]
+             (silently (found "I utilize it." [{:avoid "(" :prefer "x"} {:avoid "utilize" :prefer "use"}])))))
+    (testing "lookarounds in an avoid see the rest of the line"
+      (is (= [["fast" 0 "Prefer: quick"]]
+             (found "fast track" [{:avoid "fast(?= track)" :prefer "quick"}])))
+      (is (= [] (found "fast car" [{:avoid "fast(?= track)" :prefer "quick"}]))))
+    (testing "precompiled and hand-built checks agree"
+      (let [check {:name "r" :kind "recommender"
+                   :recommendations [{:avoid "utilize" :prefer "use"} {:avoid "in order to" :prefer "to"}]}
+            line (line-with "In order to utilize it, utilize it.")]
+        (is (= (recommender line check) (recommender line (util/compile-patterns check))))
+        (is (= 3 (count (:issues (recommender line (util/compile-patterns check))))))))))

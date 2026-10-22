@@ -141,6 +141,8 @@ Checks are EDN files. Different types do different things:
 | repetition       | Catch "the the" style duplication         |
 | regex            | Custom regex patterns                     |
 
+These are the only types. For anything else, write a regex check.
+
 ## Quoted text
 
 By default, quoted text gets skipped. Checks your narrative, ignores dialogue.
@@ -445,33 +447,6 @@ Or drop `.edn` files in:
 ```
 
 All need: `:name`, `:kind`, `:message`
-
-## Custom editors
-
-Write your own check types. Drop a Clojure file in `~/.config/proserunner/custom/`:
-
-```clojure
-;; my-editor.clj
-(ns my-editor
-  (:require [editors.registry :as registry]
-            [proserunner.text :as text]))
-
-(defn my-proofread [line check]
-  ;; Return line with :issue? true and updated :issues vector
-  ...)
-
-(registry/register-editor! "my-check-type" my-proofread)
-```
-
-Use it:
-
-```clojure
-{:name "My Check"
- :kind "my-check-type"
- :message "Issue found."}
-```
-
-See `src/editors/` for examples.
 
 ## Reset default checks
 

@@ -1,8 +1,8 @@
 (ns benchmarks.scaling
   "Scaling benchmarks - tests performance across file sizes and counts."
   (:require [benchmarks.core :as bench]
+            [proserunner.system :as sys]
             [proserunner.vet :as vet]
-            [proserunner.vet.input :as input]
             [clojure.java.io :as io]
             [clojure.string :as string]
             [editors.registry :as registry]
@@ -29,14 +29,13 @@
       (bench/run-benchmark
        (format "%d lines (%s)" line-count mode)
        (format "Processing %s with %s line processing" file-name mode)
-       #(let [input (input/make {:file file-name
-                                      :config config-path
-                                      :output "table"
-                                      :code-blocks false
-                                      :no-cache true
-                                      :parallel-files false
-                                      :parallel-lines parallel?})]
-          (vet/compute input))
+       #(let [input (bench/make-input {:file file-name
+                                       :config config-path
+                                       :output "table"
+                                       :code-blocks false
+                                       :no-cache true
+                                       :sequential-lines (not parallel?)})]
+          (doall (:results (vet/compute input))))
        {:iterations 10
         :warmup 3
         :throughput-fn (fn [_ mean-ms] (/ line-count (/ mean-ms 1000)))
@@ -55,14 +54,12 @@
        (format "%d files (%d lines)" (count existing-files) total-lines)
        (format "Processing %d files in parallel" (count existing-files))
        #(doall (pmap (fn [file]
-                       (let [input (input/make {:file file
-                                                :config config-path
-                                                :output "table"
-                                                :code-blocks false
-                                                :no-cache true
-                                                :parallel-files false
-                                                :parallel-lines true})]
-                         (vet/compute input)))
+                       (let [input (bench/make-input {:file file
+                                                      :config config-path
+                                                      :output "table"
+                                                      :code-blocks false
+                                                      :no-cache true})]
+                         (doall (:results (vet/compute input)))))
                      existing-files))
        {:iterations 10
         :warmup 3
@@ -78,11 +75,7 @@
 
   (setup-editors!)
 
-  (let [config-path (str (System/getProperty "user.home")
-                        java.io.File/separator
-                        ".proserunner"
-                        java.io.File/separator
-                        "config.edn")]
+  (let [config-path (sys/config-path "config.edn")]
 
     ;; Test 1: File Size Scaling (Sequential vs Parallel)
     (println "\n┌─ FILE SIZE SCALING ────────────────────────────────────────────────┐")

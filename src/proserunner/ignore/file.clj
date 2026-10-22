@@ -18,22 +18,24 @@
   []
   (sys/config-path "ignore.edn"))
 
+(defn- normalize
+  "Turns ignore.edn data into a map with :ignore (set) and :ignore-issues (set).
+   Before contextual ignores, the file was a bare collection of specimens:
+   a set in the template, a vector once proserunner wrote it."
+  [data]
+  (cond
+    (map? data) {:ignore (or (:ignore data) #{})
+                 :ignore-issues (set (:ignore-issues data))}
+    (coll? data) {:ignore (set data) :ignore-issues #{}}
+    :else {:ignore #{} :ignore-issues #{}}))
+
 (defn read
-  "Reads the ignore file and returns a map with :ignore (set) and :ignore-issues (set).
-   Handles legacy vector format by converting to set."
+  "Reads the ignore file and returns a map with :ignore (set) and :ignore-issues (set)."
   []
   (let [ignore-path (path)]
-    (if (.exists (io/file ignore-path))
-      (let [result (edn-utils/read-edn-file ignore-path)]
-        (if (result/success? result)
-          (let [data (:value result)
-                ignore-issues (:ignore-issues data)]
-            {:ignore (or (:ignore data) #{})
-             :ignore-issues (if (vector? ignore-issues)
-                              (set ignore-issues)
-                              (or ignore-issues #{}))})
-          {:ignore #{} :ignore-issues #{}}))
-      {:ignore #{} :ignore-issues #{}})))
+    (normalize
+     (when (.exists (io/file ignore-path))
+       (result/get-value (edn-utils/read-edn-file ignore-path))))))
 
 (defn write!
   "Writes ignore map to the ignore file atomically.

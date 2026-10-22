@@ -1,7 +1,9 @@
 (ns benchmarks.core
   "Core benchmark utilities and data structures."
   (:require [clojure.java.io :as io]
-            [clojure.string :as string])
+            [clojure.string :as string]
+            [proserunner.result :as result]
+            [proserunner.vet.input :as input])
   (:gen-class))
 
 (defrecord BenchmarkResult
@@ -12,6 +14,15 @@
    mean-ms
    throughput
    throughput-unit])
+
+(defn make-input
+  "Builds the vet input for `options`. Throws on failure, so a broken setup
+  can't be timed as no work."
+  [options]
+  (let [r (input/make options)]
+    (if (result/failure? r)
+      (throw (ex-info (str "Couldn't build benchmark input: " (:error r)) {:options options}))
+      (:value r))))
 
 (defn time-execution
   "Times the execution of f and returns elapsed time in milliseconds."

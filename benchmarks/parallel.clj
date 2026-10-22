@@ -1,8 +1,8 @@
 (ns benchmarks.parallel
   "Parallel benchmark runner - tests performance with parallel file processing."
   (:require [benchmarks.core :as bench]
+            [proserunner.system :as sys]
             [proserunner.vet :as vet]
-            [proserunner.vet.input :as input]
             [clojure.java.io :as io]
             [clojure.string :as string]
             [editors.registry :as registry]
@@ -23,18 +23,17 @@
   "Create a vet input map with standard benchmark settings.
    Disables caching and parallel processing to isolate file-level parallelism."
   [file config-path]
-  (input/make {:file file
-                   :config config-path
-                   :output "table"
-                   :code-blocks false
-                   :no-cache true
-                   :parallel-files false
-                   :parallel-lines false}))
+  (bench/make-input {:file file
+                     :config config-path
+                     :output "table"
+                     :code-blocks false
+                     :no-cache true
+                     :sequential-lines true}))
 
 (defn- process-file
-  "Process a single file with vet/compute."
+  "Process a single file with vet/compute, realizing its lazy results."
   [file config-path]
-  (vet/compute (make-benchmark-input file config-path)))
+  (doall (:results (vet/compute (make-benchmark-input file config-path)))))
 
 (defn- count-lines
   "Count total lines across multiple files."
@@ -104,11 +103,7 @@
 
   (setup-editors!)
 
-  (let [config-path (str (System/getProperty "user.home")
-                        java.io.File/separator
-                        ".proserunner"
-                        java.io.File/separator
-                        "config.edn")]
+  (let [config-path (sys/config-path "config.edn")]
 
     ;; Check for benchmark files
     (when-not (.exists (io/file "resources/benchmark-data/small.md"))

@@ -1,7 +1,9 @@
 (ns proserunner.ignore.file-test
   (:require [clojure.test :refer [deftest is testing]]
+            [proserunner.ignore.core :as core]
             [proserunner.ignore.file :as file]
             [proserunner.system]
+            [proserunner.test-helpers :refer [with-temp-dir with-user-home]]
             [clojure.java.io :as io]))
 
 (deftest path-test
@@ -24,6 +26,33 @@
     (let [result (file/read)]
       (is (or (set? (:ignore result)) (nil? (:ignore result))))
       (is (or (set? (:ignore-issues result)) (nil? (:ignore-issues result)))))))
+
+(defn- read-old-format
+  "Writes `content` to ignore.edn in a throwaway home, then calls f."
+  [content f]
+  (with-temp-dir [home "ignore-old-format"]
+    (with-user-home home
+      (io/make-parents (file/path))
+      (spit (file/path) content)
+      (f))))
+
+(deftest read-old-format-test
+  (testing "reads the old template, a bare set of specimens"
+    (read-old-format
+     ";; Put specimens for Proserunner to ignore between the braces.\n#{\"foo\" \"bar\"}\n"
+     #(is (= {:ignore #{"foo" "bar"} :ignore-issues #{}} (file/read)))))
+
+  (testing "reads the vector older versions wrote"
+    (read-old-format
+     "[\"bar\" \"foo\"]"
+     #(is (= {:ignore #{"foo" "bar"} :ignore-issues #{}} (file/read)))))
+
+  (testing "keeps old entries when adding one"
+    (read-old-format
+     "#{\"foo\"}"
+     (fn []
+       (file/write! (core/add-specimen (file/read) "bar"))
+       (is (= #{"foo" "bar"} (:ignore (file/read))))))))
 
 (deftest write-and-read-ignore-file-test
   (testing "writes and reads ignore data roundtrip"

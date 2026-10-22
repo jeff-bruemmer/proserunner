@@ -113,8 +113,8 @@
   - All relevant options passed through
 
   Returns map with normalized keys."
-  [{:keys [file exclude code-blocks quoted-text output no-cache skip-ignore config check-dir
-           sequential-lines]}]
+  [{:keys [file exclude code-blocks quoted-text output no-cache cache-dir skip-ignore config
+           check-dir sequential-lines]}]
   (let [exclude-patterns (cond
                            (vector? exclude) exclude
                            (string? exclude) [exclude]
@@ -125,6 +125,7 @@
      :quoted-text quoted-text
      :output output
      :no-cache no-cache
+     :cache-dir cache-dir
      :skip-ignore skip-ignore
      :parallel-lines? (not sequential-lines)
      :config config
@@ -158,7 +159,8 @@
 (defn combine-loaded-data
   "Combines loaded lines and checks into Input record.
 
-  Retrieves cached results from storage and assembles the Input record.
+  Retrieves cached results from storage, except with --no-cache or standard
+  input, and assembles the Input record.
   Logs warnings if cache is corrupted.
 
   Arguments:
@@ -170,8 +172,15 @@
 
   Returns Input record."
   [normalized lines loaded-checks project-ignore project-ignore-issues]
-  (let [cached-result (if (text/stdin? (:file normalized))
+  (let [cached-result (cond
+                        (text/stdin? (:file normalized))
                         (result/err "Standard input isn't cached" {:type :cache-miss})
+
+                        ;; Reading a large cache takes seconds, and --no-cache ignores it
+                        (:no-cache normalized)
+                        (result/err "Cache skipped" {:type :cache-miss})
+
+                        :else
                         (store/get-cached-result (:file normalized) normalized))
         ;; Log corruption warnings
         _ (when (and (result/failure? cached-result)

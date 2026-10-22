@@ -28,13 +28,15 @@
       nil)))
 
 (defn safe-re-pattern
-  "Safely compile a regex pattern, returning nil if invalid."
-  [re]
-  (try
-    (re-pattern re)
-    (catch java.util.regex.PatternSyntaxException e
-      (console/warn "Invalid regex pattern '" re "': " (.getMessage e))
-      nil)))
+  "Safely compile a regex pattern, with optional java.util.regex.Pattern
+  `flags`, returning nil if invalid."
+  ([re] (safe-re-pattern re 0))
+  ([^String re flags]
+   (try
+     (java.util.regex.Pattern/compile re (int flags))
+     (catch java.util.regex.PatternSyntaxException e
+       (console/warn "Invalid regex pattern '" re "': " (.getMessage e))
+       nil))))
 
 (defn specimens-pattern
   "Compiles one pattern that finds any of `specimens`."
@@ -104,18 +106,52 @@
                    message)
       line)))
 
+(defn- avoid-pattern
+  "Compiles a recommendation's `avoid` by itself, to tell which
+  recommendation a match of the check's combined pattern came from."
+  [avoid case-sensitive?]
+  (safe-re-pattern avoid (if case-sensitive? 0 java.util.regex.Pattern/CASE_INSENSITIVE)))
+
+(defn compile-recommendations
+  "Returns {:pattern p :recommendations rs}: p, made by safe-make-pattern,
+  finds any recommendation's avoid, and each of rs has its avoid-pattern as
+  :pattern. Drops recommendations whose avoid doesn't compile, so one bad
+  avoid doesn't disable the rest of the check."
+  [recommendations case-sensitive?]
+  (let [rs (->> recommendations
+                (map #(assoc % :pattern (avoid-pattern (:avoid %) case-sensitive?)))
+                (filterv :pattern))]
+    {:pattern (when (seq rs)
+                (safe-make-pattern (string/join "|" (map :avoid rs)) case-sensitive?))
+     :recommendations rs}))
+
+(defn- matches-span?
+  "True when `pattern` matches exactly `specimen`, found at `col` in `text`.
+  Lookarounds still see the rest of the line."
+  [pattern ^String text ^String specimen col]
+  (-> (re-matcher pattern text)
+      (.region (int col) (+ (int col) (count specimen)))
+      (.useTransparentBounds true)
+      (.useAnchoringBounds false)
+      .matches))
+
 (defn create-recommender
-  "Returns a function that accepts a boolean to determine whether the
-  recommender is case sensitive."
+  "Returns a recommender editor, case sensitive or not. One pass of the
+  check's combined pattern (see compile-recommendations) finds every avoid;
+  each match is reported for each recommendation whose avoid it is."
   [case-sensitive?]
-  (fn [line {:keys [recommendations] :as check}]
-    (reduce (fn [line {:keys [prefer avoid pattern]}]
-              (add-matches line
-                           (seek (:text line) (or pattern (safe-make-pattern avoid case-sensitive?)))
-                           check
-                           (str "Prefer: " prefer)))
-            line
-            recommendations)))
+  (fn [line check]
+    (let [{:keys [pattern recommendations]}
+          (if (:pattern check)
+            check
+            (compile-recommendations (:recommendations check) case-sensitive?))
+          text (:text line)]
+      (reduce (fn [line [specimen col :as match]]
+                (reduce #(add-matches %1 [match] check (str "Prefer: " (:prefer %2)))
+                        line
+                        (filter #(matches-span? (:pattern %) text specimen col) recommendations)))
+              line
+              (seek text pattern)))))
 
 (def ^:private editor-specs
   "Specifications for creating standard editors.
@@ -142,9 +178,10 @@
   (set (keys editor-specs)))
 
 (defn compile-patterns
-  "Returns `check` with its regexes compiled, as :pattern on the check (for
-  specimens), on each recommendation, and on each expression. Compile once
-  per run, so editors don't compile them for every line."
+  "Returns `check` with its regexes compiled: :pattern on the check (for
+  specimens, or all recommendations; see compile-recommendations), and on
+  each recommendation and expression. Compile once per run, so editors
+  don't compile them for every line."
   [{:keys [kind specimens recommendations expressions] :as check}]
   (let [case-sensitive? (boolean (get-in editor-specs [kind :case-sensitive?]))]
     (cond-> check
@@ -152,9 +189,7 @@
       (assoc :pattern (specimens-pattern specimens case-sensitive?))
 
       (seq recommendations)
-      (assoc :recommendations
-             (mapv #(assoc % :pattern (safe-make-pattern (:avoid %) case-sensitive?))
-                   recommendations))
+      (merge (compile-recommendations recommendations case-sensitive?))
 
       (seq expressions)
       (assoc :expressions
