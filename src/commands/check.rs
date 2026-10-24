@@ -1,7 +1,7 @@
 //! `check`: walk, read, lint, apply policy, report. Also
 //! `--ignore-issues` and `--ignore-all`, which ignore what a check finds.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::ops::RangeInclusive;
@@ -12,12 +12,13 @@ use proserunner::ctx::Ctx;
 use proserunner::ignores::{self, Entry};
 use proserunner::lint::Exhausted;
 use proserunner::report::{self, Document, LineIndex, Position, Report};
-use proserunner::rules::RuleSet;
+use proserunner::rules::{Level, RuleSet};
 use proserunner::scan::{Format, Mask, Options};
 use proserunner::walk::{self, Filters, FormatOf, Input};
 use proserunner::{Error, Result, lint};
 use proserunner::{english, format};
 
+use super::last_run::{self, Shown};
 use super::setup::{self, Setup};
 use super::{EXIT_ERROR, EXIT_ISSUES, EXIT_OK, console, ignore};
 use crate::cli::{self, CheckArgs, ScopeArgs};
@@ -108,21 +109,28 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
             Read::Skipped(why) => console::warn(&why),
         }
     }
-    let report = report::build(&setup.rules, &documents);
+    let key = last_run::Key::new(ctx, &paths, args.stdin_filename.as_deref());
 
     if ignoring {
-        let code = ignore_reported(ctx, &setup, args.scope, &report, numbers.as_deref())?;
-        return Ok(if broken_rules(&setup) {
-            EXIT_ERROR
-        } else {
-            code
-        });
+        let report = report::build(&setup.rules, &documents);
+        let last = numbers.as_ref().and_then(|_| last_run::load(ctx, &key));
+        let ignored = ignore_reported(ctx, &setup, args.scope, &report, numbers.as_deref(), last)?;
+        drop(report);
+        drop_ignored(&setup.rules, &mut documents, &ignored);
     }
 
+    let report = report::build(&setup.rules, &documents);
+    last_run::save(ctx, &key, &report);
     let output = args.output.unwrap_or(config.output.value);
-    console::stdout(|out| format::write(out, &report, output, &ctx.cwd))?;
+    if output.has_styles() && console::wants_styles() {
+        console::styled_stdout(|out| format::write_styled(out, &report, output, &ctx.cwd))?;
+    } else {
+        console::stdout(|out| format::write(out, &report, output, &ctx.cwd))?;
+    }
     if output.has_summary() {
-        console::status(ctx, &english::summary(report.issues.len()));
+        for line in summary(&report) {
+            console::status(ctx, &line);
+        }
     }
     if args.timer {
         console::status(
@@ -149,6 +157,57 @@ fn broken_rules(setup: &Setup) -> bool {
         ));
     }
     setup.broken_rules > 0
+}
+
+/// From this many issues, the summary names the rules that found the
+/// most, so a first run on a large project shows where to start.
+const BUSIEST_FROM: usize = 20;
+
+/// How many rules it names.
+const BUSIEST: usize = 5;
+
+/// What goes to standard error after the report: how many files and
+/// issues, by level, and in a long report, the rules that found the most.
+fn summary(report: &Report<'_>) -> Vec<String> {
+    let levels: Vec<String> = [Level::Error, Level::Warning, Level::Hint]
+        .into_iter()
+        .filter_map(|level| {
+            let n = report.issues.iter().filter(|i| i.level == level).count();
+            (n > 0).then(|| english::count(n, level.as_str()))
+        })
+        .collect();
+    let mut lines = vec![english::summary(
+        report.files.len(),
+        report.issues.len(),
+        &levels,
+    )];
+    if report.issues.len() >= BUSIEST_FROM {
+        let busiest = busiest_rules(report);
+        let width = busiest
+            .first()
+            .map_or(0, |&(_, n)| english::number(n).len());
+        lines.push("The rules that found the most:".into());
+        for (id, n) in busiest {
+            lines.push(format!("  {:>width$}  {id}", english::number(n)));
+        }
+        lines.push(
+            "'proserunner explain RULE' shows what a rule matches and how to turn it off.".into(),
+        );
+    }
+    lines
+}
+
+/// The [`BUSIEST`] rules by how many issues each found, most first, and
+/// in id order on a tie.
+fn busiest_rules<'report>(report: &Report<'report>) -> Vec<(&'report str, usize)> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for i in &report.issues {
+        *counts.entry(i.rule.id.as_str()).or_default() += 1;
+    }
+    let mut counts: Vec<(&str, usize)> = counts.into_iter().collect();
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    counts.truncate(BUSIEST);
+    counts
 }
 
 /// The paths to check: as given, or `-` when only `--stdin-format` or
@@ -333,42 +392,46 @@ fn exhausted_warnings(
     warnings
 }
 
-/// `--ignore-issues` and `--ignore-all`: adds the chosen issues of this
-/// run, numbered as a plain run would show them, to an ignore list.
+/// `--ignore-issues` and `--ignore-all`: adds the chosen issues to an
+/// ignore list, and returns them. `--ignore-issues` takes the numbers of
+/// the last run of these paths when one was kept (`last`), so they name
+/// what that run showed, even after the files changed; otherwise, this
+/// run's.
 fn ignore_reported(
     ctx: &Ctx,
     setup: &Setup,
     scope: ScopeArgs,
     report: &Report<'_>,
     numbers: Option<&[RangeInclusive<usize>]>,
-) -> Result<u8> {
-    let total = report.issues.len();
-    let chosen: Vec<_> = match numbers {
-        None => report.issues.iter().collect(),
+    last: Option<Vec<Shown>>,
+) -> Result<Vec<Shown>> {
+    let current = last_run::shown(report);
+    let chosen = match numbers {
+        None => current,
         Some(numbers) => {
-            let past_end = numbers
-                .iter()
-                .find(|r| *r.end() > total)
-                .map(|r| (*r.start()).max(total + 1));
-            if let Some(n) = past_end {
-                return Err(Error::Usage(match total {
-                    0 => "--ignore-issues: this run found no issues".into(),
-                    1 => format!("--ignore-issues: there's no issue {n}; this run found 1"),
-                    _ => format!(
-                        "--ignore-issues: there's no issue {n}; this run found {total} (1-{total})"
-                    ),
-                }));
+            let (numbered, run) = match last {
+                Some(last) => (last, "the last run"),
+                None => (current.clone(), "this run"),
+            };
+            in_range(numbers, numbered.len(), run)?;
+            let picked = numbered
+                .into_iter()
+                .filter(|s| numbers.iter().any(|r| r.contains(&s.number)));
+            // An issue the last run showed may be gone: fixed since.
+            let (here, gone): (Vec<Shown>, Vec<Shown>) =
+                picked.partition(|s| current.iter().any(|c| same_issue(c, s)));
+            for s in &gone {
+                console::status(
+                    ctx,
+                    &format!("[{}] {} isn't there any more.", s.number, described(s)),
+                );
             }
-            report
-                .issues
-                .iter()
-                .filter(|i| numbers.iter().any(|r| r.contains(&i.number)))
-                .collect()
+            here
         }
     };
     if chosen.is_empty() {
         console::status(ctx, "No issues to ignore.");
-        return Ok(EXIT_OK);
+        return Ok(chosen);
     }
 
     let scope = setup::write_scope(setup.project.as_deref(), scope)?;
@@ -385,11 +448,11 @@ fn ignore_reported(
     }
     let entries: Vec<Entry> = chosen
         .iter()
-        .filter_map(|i| {
+        .filter_map(|s| {
             Some(Entry::new(
-                ignores::file_for(ctx, &scope, i.path?),
-                Some(i.rule.id.clone()),
-                i.shown().into_owned(),
+                ignores::file_for(ctx, &scope, s.path.as_deref()?),
+                Some(s.rule.clone()),
+                s.matched.clone(),
             ))
         })
         .collect();
@@ -402,15 +465,29 @@ fn ignore_reported(
         }
         Ok(added)
     })?;
-    console::status(
-        ctx,
-        &format!(
-            "Ignored {} in {} ({}).",
-            english::count(chosen.len(), "issue"),
-            ignore::list_name(&scope),
-            ctx.display(&ignores::path(ctx, &scope)?)
-        ),
+    let list = format!(
+        "{} ({})",
+        ignore::list_name(&scope),
+        ctx.display(&ignores::path(ctx, &scope)?)
     );
+    let ignored = english::count(chosen.len(), "issue");
+    if numbers.is_some() {
+        console::status(
+            ctx,
+            &format!("Ignored {ignored} in {list}, each wherever its match is in its file:"),
+        );
+        for s in chosen.iter().take(LISTED) {
+            console::status(ctx, &format!("  [{}] {}", s.number, described(s)));
+        }
+        if chosen.len() > LISTED {
+            console::status(
+                ctx,
+                &format!("  and {} more.", english::number(chosen.len() - LISTED)),
+            );
+        }
+    } else {
+        console::status(ctx, &format!("Ignored {ignored} in {list}."));
+    }
     if added < chosen.len() {
         console::status(
             ctx,
@@ -420,5 +497,58 @@ fn ignore_reported(
             ),
         );
     }
-    Ok(EXIT_OK)
+    Ok(chosen)
+}
+
+/// How many issues `--ignore-issues` lists by name.
+const LISTED: usize = 20;
+
+/// An error unless every number is one of the `total` that `run` found.
+fn in_range(numbers: &[RangeInclusive<usize>], total: usize, run: &str) -> Result<()> {
+    let past_end = numbers
+        .iter()
+        .find(|r| *r.end() > total)
+        .map(|r| (*r.start()).max(total + 1));
+    match past_end {
+        None => Ok(()),
+        Some(n) => Err(Error::Usage(match total {
+            0 => format!("--ignore-issues: {run} found no issues"),
+            1 => format!("--ignore-issues: there's no issue {n}; {run} found 1"),
+            _ => format!("--ignore-issues: there's no issue {n}; {run} found {total} (1-{total})"),
+        })),
+    }
+}
+
+/// An issue as `--ignore-issues` names it: `"utilize" in a.md (rule)`.
+fn described(s: &Shown) -> String {
+    format!("\"{}\" in {} ({})", s.matched, s.file, s.rule)
+}
+
+/// Whether two issues are the same to an ignore list: one rule's match,
+/// compared as ignores compare it, in one file.
+fn same_issue(a: &Shown, b: &Shown) -> bool {
+    a.path == b.path && a.rule == b.rule && ignores::key(&a.matched) == ignores::key(&b.matched)
+}
+
+/// Takes the issues just ignored out of `documents`, as the next run's
+/// ignore list will.
+fn drop_ignored(rules: &RuleSet, documents: &mut [Document], ignored: &[Shown]) {
+    for doc in documents {
+        let here: Vec<&Shown> = ignored
+            .iter()
+            .filter(|s| s.path.is_some() && s.path == doc.path)
+            .collect();
+        if here.is_empty() {
+            continue;
+        }
+        doc.issues.retain(|issue| {
+            let Some(rule) = rules.get(issue.rule) else {
+                return true;
+            };
+            let matched = ignores::key(&issue.matched);
+            !here
+                .iter()
+                .any(|s| s.rule == rule.id && ignores::key(&s.matched) == matched)
+        });
+    }
 }

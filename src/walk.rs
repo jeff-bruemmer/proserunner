@@ -5,7 +5,7 @@
 //! checked) and config `exclude` patterns. `--force-exclude` applies the
 //! same rules to files named directly.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Debug, Formatter};
 use std::fs;
 use std::io::ErrorKind;
@@ -16,6 +16,7 @@ use ignore::overrides::OverrideBuilder;
 use ignore::{Match, WalkBuilder};
 
 use crate::ctx;
+use crate::english;
 use crate::error::{Error, Result};
 use crate::scan::Format;
 
@@ -47,7 +48,8 @@ pub struct Walk {
     /// Each once, in the order found, however each was named.
     pub inputs: Vec<Input>,
     /// What a directory walk skipped, with the reason: files too large,
-    /// and directories or ignore files it couldn't read.
+    /// directories or ignore files it couldn't read, and a directory named
+    /// with nothing to check in it.
     pub skipped: Vec<String>,
     /// The absolute paths of the files named directly, rather than found
     /// in a directory.
@@ -400,6 +402,8 @@ fn walk_dir(dir: &Path, filters: Filters<'_>, walk: &mut Walking) -> Result<()> 
     // with a warning when it isn't.
     fs::read_dir(dir).map_err(|e| Error::io(dir, e))?;
 
+    let mut found = 0;
+    let mut unread = BTreeSet::new();
     for entry in walker(dir).overrides(overrides).build() {
         let entry = match entry {
             Ok(entry) => entry,
@@ -415,11 +419,15 @@ fn walk_dir(dir: &Path, filters: Filters<'_>, walk: &mut Walking) -> Result<()> 
             continue;
         }
         let Some(format) = (filters.format)(path) else {
+            if let Some(ext) = path.extension() {
+                unread.insert(format!(".{}", ext.to_string_lossy().to_lowercase()));
+            }
             continue;
         };
         if (filters.excluded)(path) {
             continue;
         }
+        found += 1;
         let too_large = entry.metadata().is_ok_and(|m| m.len() > MAX_FILE_BYTES);
         if too_large {
             walk.walk
@@ -433,7 +441,28 @@ fn walk_dir(dir: &Path, filters: Filters<'_>, walk: &mut Walking) -> Result<()> 
         };
         walk.push(input, filters.cwd);
     }
+    if found == 0 {
+        walk.walk.skipped.push(nothing_to_check(dir, &unread));
+    }
     Ok(())
+}
+
+/// Why a directory named had nothing to check, naming the extensions of
+/// the files in it that proserunner doesn't read, when there are some.
+fn nothing_to_check(dir: &Path, unread: &BTreeSet<String>) -> String {
+    const SHOWN: usize = 5;
+    if unread.is_empty() {
+        return format!("{}: no files to check", dir.display());
+    }
+    let mut exts: Vec<String> = unread.iter().take(SHOWN).cloned().collect();
+    if unread.len() > SHOWN {
+        exts.push(format!("{} more", unread.len() - SHOWN));
+    }
+    format!(
+        "{}: no files to check; proserunner doesn't read {} files (config's [formats] can map an extension to a format it reads)",
+        dir.display(),
+        english::and_list(&exts)
+    )
 }
 
 /// How a path is shown: relative to `cwd` when under it, `~/…` when under

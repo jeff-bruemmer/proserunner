@@ -1,4 +1,4 @@
-//! Where a run happens: the working directory, the home and config
+//! Where a run happens: the working directory, the home, config and cache
 //! directories, and the project around the working directory. `main` reads
 //! these from the environment once; everything else takes them as an
 //! argument, so nothing depends on global state.
@@ -27,27 +27,39 @@ pub struct Ctx {
     /// `$XDG_CONFIG_HOME/proserunner`, else `~/.config/proserunner`; `None`
     /// when neither variable is set.
     pub config_dir: Option<PathBuf>,
+    /// `$XDG_CACHE_HOME/proserunner`, else `~/.cache/proserunner`, for what
+    /// a run keeps for the next, such as the issues it numbered; `None`
+    /// when neither variable is set.
+    pub cache_dir: Option<PathBuf>,
     /// Print only results and errors.
     pub quiet: bool,
 }
 
 impl Ctx {
-    /// Reads the working directory, `HOME` and `XDG_CONFIG_HOME`.
+    /// Reads the working directory, `HOME`, `XDG_CONFIG_HOME` and
+    /// `XDG_CACHE_HOME`.
     pub fn from_env(quiet: bool) -> Result<Ctx> {
         let cwd = env::current_dir().map_err(|e| Error::io(".", e))?;
         let home = env::var_os("HOME")
             .filter(|h| !h.is_empty())
             .map(PathBuf::from);
         // The XDG spec says to ignore a relative value.
-        let xdg = env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute());
-        Ok(Ctx::new(cwd, home, xdg, quiet))
+        let xdg = |name| {
+            env::var_os(name)
+                .map(PathBuf::from)
+                .filter(|p| p.is_absolute())
+        };
+        let mut ctx = Ctx::new(cwd, home, xdg("XDG_CONFIG_HOME"), quiet);
+        if let Some(cache) = xdg("XDG_CACHE_HOME") {
+            ctx.cache_dir = Some(cache.join(APP));
+        }
+        Ok(ctx)
     }
 
     /// A context that reads nothing from the environment. `cwd` must be
     /// absolute, and so must `xdg_config_home` (`$XDG_CONFIG_HOME`), if
-    /// given.
+    /// given. The cache directory is `~/.cache/proserunner`; assign
+    /// [`cache_dir`](Self::cache_dir) for another.
     pub fn new(
         cwd: PathBuf,
         home: Option<PathBuf>,
@@ -57,10 +69,12 @@ impl Ctx {
         let config_dir = xdg_config_home
             .or_else(|| home.as_ref().map(|h| h.join(".config")))
             .map(|d| d.join(APP));
+        let cache_dir = home.as_ref().map(|h| h.join(".cache").join(APP));
         Ctx {
             cwd,
             home,
             config_dir,
+            cache_dir,
             quiet,
         }
     }

@@ -32,11 +32,12 @@ pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
-    #[command(flatten)]
-    pub check: CheckArgs,
-
+    // Before `check`, whose help headings would otherwise carry on to it.
     #[command(flatten)]
     pub global: GlobalArgs,
+
+    #[command(flatten)]
+    pub check: CheckArgs,
 }
 
 /// The command line, or clap's error and exit status 2. A word after a
@@ -114,69 +115,76 @@ pub(crate) struct CheckArgs {
     /// --stdin-format and --stdin-filename with no paths
     pub paths: Vec<PathBuf>,
 
-    /// Output format [default: group]
-    #[arg(short, long, value_enum)]
-    pub output: Option<Output>,
-
     /// Skip paths matching PATTERN (gitignore syntax, relative to each
     /// directory checked; repeat for more)
-    #[arg(short, long, value_name = "PATTERN")]
+    #[arg(short, long, value_name = "PATTERN", help_heading = INPUT)]
     pub exclude: Vec<String>,
 
     /// Skip excluded and ignored files even when they're named, as hooks
     /// such as pre-commit name them
-    #[arg(long)]
+    #[arg(long, help_heading = INPUT)]
     pub force_exclude: bool,
 
     /// Read standard input as FORMAT: markdown, mdx, org, text, html,
     /// asciidoc or typst [default: from --stdin-filename, else markdown]
-    #[arg(long, value_name = "FORMAT", value_parser = format_parser(), hide_possible_values = true)]
+    #[arg(long, value_name = "FORMAT", value_parser = format_parser(), hide_possible_values = true, help_heading = INPUT)]
     pub stdin_format: Option<Format>,
 
     /// Check standard input as the file at PATH: its format, overrides and
     /// ignores apply, and issues name it
-    #[arg(long, value_name = "PATH")]
+    #[arg(long, value_name = "PATH", help_heading = INPUT)]
     pub stdin_filename: Option<PathBuf>,
 
     /// Check quoted text too
-    #[arg(long, overrides_with = "no_quoted_text")]
+    #[arg(long, overrides_with = "no_quoted_text", help_heading = WHAT)]
     pub quoted_text: bool,
 
     /// Don't check quoted text, whatever config says
-    #[arg(long, overrides_with = "quoted_text")]
+    #[arg(long, overrides_with = "quoted_text", help_heading = WHAT)]
     pub no_quoted_text: bool,
 
     /// Check code blocks too
-    #[arg(long, overrides_with = "no_code_blocks")]
+    #[arg(long, overrides_with = "no_code_blocks", help_heading = WHAT)]
     pub code_blocks: bool,
 
     /// Don't check code blocks, whatever config says
-    #[arg(long, overrides_with = "code_blocks")]
+    #[arg(long, overrides_with = "code_blocks", help_heading = WHAT)]
     pub no_code_blocks: bool,
 
+    /// Output format [default: group]
+    #[arg(short, long, value_enum, help_heading = OUTPUT)]
+    pub output: Option<Output>,
+
     /// Exit 1 only for issues at LEVEL or above [default: warning]
-    #[arg(long, value_name = "LEVEL", value_enum)]
+    #[arg(long, value_name = "LEVEL", value_enum, help_heading = OUTPUT)]
     pub fail_on: Option<Level>,
 
+    /// Print how long the run took
+    #[arg(long, help_heading = OUTPUT)]
+    pub timer: bool,
+
     /// Don't apply ignore lists for this run
-    #[arg(long)]
+    #[arg(long, help_heading = IGNORING)]
     pub no_ignores: bool,
 
-    /// Ignore issues from this run by number, such as 1,3,5-7
-    #[arg(long, value_name = "NUMBERS", conflicts_with = "ignore_all")]
+    /// Ignore issues by the numbers the last run of these paths showed,
+    /// such as 1,3,5-7
+    #[arg(long, value_name = "NUMBERS", conflicts_with = "ignore_all", help_heading = IGNORING)]
     pub ignore_issues: Option<String>,
 
     /// Ignore every issue from this run
-    #[arg(long)]
+    #[arg(long, help_heading = IGNORING)]
     pub ignore_all: bool,
 
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = IGNORING)]
     pub scope: ScopeArgs,
-
-    /// Print how long the run took
-    #[arg(long)]
-    pub timer: bool,
 }
+
+/// `check`'s help headings.
+const INPUT: &str = "Input";
+const WHAT: &str = "What to check";
+const OUTPUT: &str = "Output";
+const IGNORING: &str = "Ignoring";
 
 /// Which ignore list a command writes. By default, the project's inside a
 /// project, otherwise the global one.

@@ -6,6 +6,7 @@ mod config;
 mod console;
 mod ignore;
 mod init;
+mod last_run;
 mod migrate;
 mod rules;
 mod setup;

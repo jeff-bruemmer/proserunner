@@ -2,84 +2,78 @@
 source: tests/golden.rs
 expression: "plain(&[\"resources/benchmark-data/small.md\",\n\"resources/benchmark-data/medium.md\"])"
 ---
-resources/benchmark-data/medium.md:1:1: [1] "It goes without saying" -> A tired phrase.
-resources/benchmark-data/medium.md:1:1: [2] "It goes without saying" -> Unnecessary signposting.
-resources/benchmark-data/medium.md:2:9: [3] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:3:8: [4] "revert back" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:5:11: [5] "leverage" -> Prefer: use.
-resources/benchmark-data/medium.md:7:1: [6] "I would argue" -> Omit this phrase.
-resources/benchmark-data/medium.md:8:11: [7] "utilize" -> Prefer: use.
-resources/benchmark-data/medium.md:9:9: [8] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:12:9: [9] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:14:1: [10] "Per your request" -> Jargon.
-resources/benchmark-data/medium.md:16:5: [11] "consensus of opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:16:29: [12] "quite" -> Overused adverb.
-resources/benchmark-data/medium.md:17:9: [13] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:18:11: [14] "leverage" -> Prefer: use.
-resources/benchmark-data/medium.md:20:1: [15] "The the" -> Consecutive word repetition.
-resources/benchmark-data/medium.md:21:8: [16] "revert back" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:22:1: [17] "At this point in time" -> Prefer: now.
-resources/benchmark-data/medium.md:22:1: [18] "At this point in time" -> Jargon.
-resources/benchmark-data/medium.md:22:4: [19] "this point in time" -> A tired phrase.
-resources/benchmark-data/medium.md:23:9: [20] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:24:5: [21] "consensus of opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:24:29: [22] "quite" -> Overused adverb.
-resources/benchmark-data/medium.md:26:1: [23] "I would argue" -> Omit this phrase.
-resources/benchmark-data/medium.md:27:1: [24] "I would argue" -> Omit this phrase.
-resources/benchmark-data/medium.md:28:9: [25] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:30:9: [26] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:31:1: [27] "It goes without saying" -> A tired phrase.
-resources/benchmark-data/medium.md:31:1: [28] "It goes without saying" -> Unnecessary signposting.
-resources/benchmark-data/medium.md:32:1: [29] "Per your request" -> Jargon.
-resources/benchmark-data/medium.md:33:12: [30] "added bonus" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:36:1: [31] "At this point in time" -> Prefer: now.
-resources/benchmark-data/medium.md:36:1: [32] "At this point in time" -> Jargon.
-resources/benchmark-data/medium.md:36:4: [33] "this point in time" -> A tired phrase.
-resources/benchmark-data/medium.md:40:11: [34] "leverage" -> Prefer: use.
-resources/benchmark-data/medium.md:41:1: [35] "Per your request" -> Jargon.
-resources/benchmark-data/medium.md:42:12: [36] "think outside the box" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:44:1: [37] "I would argue" -> Omit this phrase.
-resources/benchmark-data/medium.md:46:9: [38] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:48:11: [39] "utilize" -> Prefer: use.
-resources/benchmark-data/medium.md:50:1: [40] "Let's touch base" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:51:11: [41] "utilize" -> Prefer: use.
-resources/benchmark-data/medium.md:53:1: [42] "At this point in time" -> Prefer: now.
-resources/benchmark-data/medium.md:53:1: [43] "At this point in time" -> Jargon.
-resources/benchmark-data/medium.md:53:4: [44] "this point in time" -> A tired phrase.
-resources/benchmark-data/medium.md:54:11: [45] "no brainer" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:55:11: [46] "no brainer" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:58:1: [47] "I would argue" -> Omit this phrase.
-resources/benchmark-data/medium.md:59:5: [48] "consensus of opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:59:29: [49] "quite" -> Overused adverb.
-resources/benchmark-data/medium.md:60:1: [50] "The the" -> Consecutive word repetition.
-resources/benchmark-data/medium.md:61:11: [51] "leverage" -> Prefer: use.
-resources/benchmark-data/medium.md:62:1: [52] "It goes without saying" -> A tired phrase.
-resources/benchmark-data/medium.md:62:1: [53] "It goes without saying" -> Unnecessary signposting.
-resources/benchmark-data/medium.md:68:1: [54] "Let's touch base" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:69:7: [55] "personal opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:70:9: [56] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:73:1: [57] "Per your request" -> Jargon.
-resources/benchmark-data/medium.md:74:12: [58] "think outside the box" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:75:9: [59] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:76:12: [60] "think outside the box" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:77:9: [61] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:81:8: [62] "revert back" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:82:1: [63] "Per your request" -> Jargon.
-resources/benchmark-data/medium.md:83:5: [64] "consensus of opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:83:29: [65] "quite" -> Overused adverb.
-resources/benchmark-data/medium.md:84:9: [66] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:85:11: [67] "no brainer" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:86:9: [68] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:87:9: [69] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:88:9: [70] "hopefully" -> Skunked term: consider rephrasing.
-resources/benchmark-data/medium.md:89:11: [71] "utilize" -> Prefer: use.
-resources/benchmark-data/medium.md:91:7: [72] "personal opinion" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:93:9: [73] "very" -> Overused adverb.
-resources/benchmark-data/medium.md:94:12: [74] "think outside the box" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:95:12: [75] "think outside the box" -> Avoid corporate-speak.
-resources/benchmark-data/medium.md:99:12: [76] "added bonus" -> Pleonastic phrase.
-resources/benchmark-data/medium.md:100:1: [77] "Let's touch base" -> Avoid corporate-speak.
-resources/benchmark-data/small.md:1:1: [78] "The the" -> Consecutive word repetition.
-resources/benchmark-data/small.md:2:1: [79] "Per your request" -> Jargon.
-resources/benchmark-data/small.md:8:5: [80] "consensus of opinion" -> Pleonastic phrase.
-resources/benchmark-data/small.md:8:29: [81] "quite" -> Overused adverb.
+resources/benchmark-data/medium.md:1:1: [1] "It goes without saying" -> Signposting: cut it and make the point.
+resources/benchmark-data/medium.md:2:9: [2] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:3:8: [3] "revert back" -> Redundant: “revert” says it.
+resources/benchmark-data/medium.md:5:11: [4] "leverage" -> Prefer: use.
+resources/benchmark-data/medium.md:7:1: [5] "I would argue" -> Omit this phrase.
+resources/benchmark-data/medium.md:8:11: [6] "utilize" -> Prefer: use.
+resources/benchmark-data/medium.md:9:9: [7] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:12:9: [8] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:14:1: [9] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/medium.md:16:5: [10] "consensus of opinion" -> Redundant: “consensus” says it.
+resources/benchmark-data/medium.md:16:29: [11] "quite" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:17:9: [12] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:18:11: [13] "leverage" -> Prefer: use.
+resources/benchmark-data/medium.md:20:1: [14] "The the" -> Repeated word: delete one.
+resources/benchmark-data/medium.md:21:8: [15] "revert back" -> Redundant: “revert” says it.
+resources/benchmark-data/medium.md:22:1: [16] "At this point in time" -> Prefer: now.
+resources/benchmark-data/medium.md:22:4: [17] "this point in time" -> Cliché: say it in your own words.
+resources/benchmark-data/medium.md:23:9: [18] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:24:5: [19] "consensus of opinion" -> Redundant: “consensus” says it.
+resources/benchmark-data/medium.md:24:29: [20] "quite" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:26:1: [21] "I would argue" -> Omit this phrase.
+resources/benchmark-data/medium.md:27:1: [22] "I would argue" -> Omit this phrase.
+resources/benchmark-data/medium.md:28:9: [23] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:30:9: [24] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:31:1: [25] "It goes without saying" -> Signposting: cut it and make the point.
+resources/benchmark-data/medium.md:32:1: [26] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/medium.md:33:12: [27] "added bonus" -> Redundant: “bonus” says it.
+resources/benchmark-data/medium.md:36:1: [28] "At this point in time" -> Prefer: now.
+resources/benchmark-data/medium.md:36:4: [29] "this point in time" -> Cliché: say it in your own words.
+resources/benchmark-data/medium.md:40:11: [30] "leverage" -> Prefer: use.
+resources/benchmark-data/medium.md:41:1: [31] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/medium.md:42:12: [32] "think outside the box" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:44:1: [33] "I would argue" -> Omit this phrase.
+resources/benchmark-data/medium.md:46:9: [34] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:48:11: [35] "utilize" -> Prefer: use.
+resources/benchmark-data/medium.md:50:1: [36] "Let's touch base" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:51:11: [37] "utilize" -> Prefer: use.
+resources/benchmark-data/medium.md:53:1: [38] "At this point in time" -> Prefer: now.
+resources/benchmark-data/medium.md:53:4: [39] "this point in time" -> Cliché: say it in your own words.
+resources/benchmark-data/medium.md:54:11: [40] "no brainer" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:55:11: [41] "no brainer" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:58:1: [42] "I would argue" -> Omit this phrase.
+resources/benchmark-data/medium.md:59:5: [43] "consensus of opinion" -> Redundant: “consensus” says it.
+resources/benchmark-data/medium.md:59:29: [44] "quite" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:60:1: [45] "The the" -> Repeated word: delete one.
+resources/benchmark-data/medium.md:61:11: [46] "leverage" -> Prefer: use.
+resources/benchmark-data/medium.md:62:1: [47] "It goes without saying" -> Signposting: cut it and make the point.
+resources/benchmark-data/medium.md:68:1: [48] "Let's touch base" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:69:7: [49] "personal opinion" -> Redundant: “opinion” says it.
+resources/benchmark-data/medium.md:70:9: [50] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:73:1: [51] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/medium.md:74:12: [52] "think outside the box" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:75:9: [53] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:76:12: [54] "think outside the box" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:77:9: [55] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:81:8: [56] "revert back" -> Redundant: “revert” says it.
+resources/benchmark-data/medium.md:82:1: [57] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/medium.md:83:5: [58] "consensus of opinion" -> Redundant: “consensus” says it.
+resources/benchmark-data/medium.md:83:29: [59] "quite" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:84:9: [60] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:85:11: [61] "no brainer" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:86:9: [62] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:87:9: [63] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:88:9: [64] "hopefully" -> Skunked term: rephrase to avoid it.
+resources/benchmark-data/medium.md:89:11: [65] "utilize" -> Prefer: use.
+resources/benchmark-data/medium.md:91:7: [66] "personal opinion" -> Redundant: “opinion” says it.
+resources/benchmark-data/medium.md:93:9: [67] "very" -> Overused adverb: cut it, or use a stronger verb.
+resources/benchmark-data/medium.md:94:12: [68] "think outside the box" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:95:12: [69] "think outside the box" -> Avoid corporate-speak.
+resources/benchmark-data/medium.md:99:12: [70] "added bonus" -> Redundant: “bonus” says it.
+resources/benchmark-data/medium.md:100:1: [71] "Let's touch base" -> Avoid corporate-speak.
+resources/benchmark-data/small.md:1:1: [72] "The the" -> Repeated word: delete one.
+resources/benchmark-data/small.md:2:1: [73] "Per your request" -> Jargon: say it plainly.
+resources/benchmark-data/small.md:8:5: [74] "consensus of opinion" -> Redundant: “consensus” says it.
+resources/benchmark-data/small.md:8:29: [75] "quite" -> Overused adverb: cut it, or use a stronger verb.

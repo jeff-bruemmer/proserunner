@@ -1,7 +1,8 @@
 schema = 1
 name = "Annotations"
-message = "Draft litter."
+message = "Draft note: resolve it, then remove it."
 explain = "Typical markers used to signal problem sites in the text."
+level = "error"
 case = "sensitive"
 
 words = [

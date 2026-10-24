@@ -1,6 +1,6 @@
 schema = 1
 name = "Sexism"
-message = "Sexist or ridiculous term."
+message = "Gendered term: use a neutral one."
 explain = "Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_)."
 
 words = [

@@ -1,23 +1,37 @@
 //! The default format: issues grouped under each file, in aligned
-//! columns that every group shares.
+//! columns that every group shares. Each row ends with its rule's id, the
+//! name config and directives take. Styled, files and matches are bold,
+//! positions and ids dim, and each level has its color.
 
+use std::fmt::{self, Display, Formatter};
 use std::io::{self, Write};
 
+use anstyle::{AnsiColor, Style};
 use unicode_width::UnicodeWidthStr;
 
 use crate::report::{Report, Reported};
+use crate::rules::Level;
 
 /// A specimen wider than this is cut short, so a long match, such as a
 /// sentence over a limit, doesn't push its message off the screen.
 const MAX_SPECIMEN_WIDTH: usize = 40;
 
+/// Messages are padded to the widest, up to this, so rule ids line up
+/// without one long message pushing every id across the screen.
+const MAX_MESSAGE_WIDTH: usize = 50;
+
 const GAP: &str = "  ";
+
+const BOLD: Style = Style::new().bold();
+const DIM: Style = Style::new().dimmed();
 
 struct Widths {
     number: usize,
     line: usize,
     column: usize,
+    level: usize,
     specimen: usize,
+    message: usize,
 }
 
 fn widths(issues: &[Reported<'_>]) -> Widths {
@@ -26,7 +40,9 @@ fn widths(issues: &[Reported<'_>]) -> Widths {
         number: max(&|i| format!("[{}]", i.number).len()),
         line: max(&|i| i.line.to_string().len()),
         column: max(&|i| i.column.to_string().len()),
+        level: max(&|i| i.level.as_str().len()),
         specimen: max(&|i| specimen(&i.shown()).width()),
+        message: max(&|i| i.message.width()).min(MAX_MESSAGE_WIDTH),
     }
 }
 
@@ -52,29 +68,58 @@ fn specimen(s: &str) -> String {
     format!("{}…\"", cut.trim_end())
 }
 
-fn pad_right(s: &str, width: usize) -> String {
-    format!("{s}{}", " ".repeat(width.saturating_sub(s.width())))
+/// How a level stands out: errors in bold red, warnings in yellow, hints
+/// in cyan.
+fn level_style(level: Level) -> Style {
+    match level {
+        Level::Error => BOLD.fg_color(Some(AnsiColor::Red.into())),
+        Level::Warning => Style::new().fg_color(Some(AnsiColor::Yellow.into())),
+        Level::Hint => Style::new().fg_color(Some(AnsiColor::Cyan.into())),
+    }
 }
 
-pub(super) fn write(out: &mut dyn Write, report: &Report<'_>) -> io::Result<()> {
+/// `text` in `style`, then spaces to `width`, so padding is never styled.
+/// It writes itself, so a row allocates nothing for its cells.
+struct Cell<'text> {
+    text: &'text str,
+    width: usize,
+    style: Style,
+}
+
+impl Display for Cell<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let pad = self.width.saturating_sub(self.text.width());
+        write!(f, "{}{}{:#}{:pad$}", self.style, self.text, self.style, "")
+    }
+}
+
+fn cell(text: &str, width: usize, style: Style) -> Cell<'_> {
+    Cell { text, width, style }
+}
+
+/// Writes `report`; `styled` adds ANSI styles.
+pub(super) fn write(out: &mut dyn Write, report: &Report<'_>, styled: bool) -> io::Result<()> {
     let w = widths(&report.issues);
+    let style = |s: Style| if styled { s } else { Style::new() };
     let mut file: Option<&str> = None;
 
     for i in &report.issues {
         if file != Some(i.file) {
             writeln!(out)?;
-            writeln!(out, "{}", i.file)?;
+            writeln!(out, "{}", cell(i.file, 0, style(BOLD)))?;
             file = Some(i.file);
         }
         // Right-justify lines and left-justify columns so the colons line up.
         let position = format!("{:>width$}:{}", i.line, i.column, width = w.line);
         writeln!(
             out,
-            "{}{GAP}{}{GAP}{} -> {}",
-            pad_right(&format!("[{}]", i.number), w.number),
-            pad_right(&position, w.line + 1 + w.column),
-            pad_right(&specimen(&i.shown()), w.specimen),
-            i.message
+            "{}{GAP}{}{GAP}{}{GAP}{} -> {}{GAP}{}",
+            cell(&format!("[{}]", i.number), w.number, Style::new()),
+            cell(&position, w.line + 1 + w.column, style(DIM)),
+            cell(i.level.as_str(), w.level, style(level_style(i.level))),
+            cell(&specimen(&i.shown()), w.specimen, style(BOLD)),
+            cell(&i.message, w.message, Style::new()),
+            cell(&i.rule.id, 0, style(DIM)),
         )?;
     }
     Ok(())
@@ -94,5 +139,12 @@ mod tests {
         assert!(cut.width() <= MAX_SPECIMEN_WIDTH);
         let wide = specimen(&"漢".repeat(30));
         assert_eq!(wide.width(), MAX_SPECIMEN_WIDTH - 1);
+    }
+
+    #[test]
+    fn cells_pad_outside_their_style() {
+        assert_eq!(cell("ab", 4, Style::new()).to_string(), "ab  ");
+        assert_eq!(cell("ab", 4, BOLD).to_string(), "\u{1b}[1mab\u{1b}[0m  ");
+        assert_eq!(cell("abcdef", 4, Style::new()).to_string(), "abcdef");
     }
 }

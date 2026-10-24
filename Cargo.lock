@@ -735,6 +735,8 @@ name = "proserunner"
 version = "1.0.0-alpha.1"
 dependencies = [
  "aho-corasick",
+ "anstream",
+ "anstyle",
  "asciidoc-parser",
  "assert_cmd",
  "clap",

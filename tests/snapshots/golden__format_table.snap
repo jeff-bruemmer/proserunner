@@ -2,10 +2,10 @@
 source: tests/golden.rs
 expression: "output(&[\"resources/drivel.md\"], format)"
 ---
-|   # | File                | Line | Col | Match               | Message                            | Rule                  | Level   |
-| --: | ------------------- | ---: | --: | ------------------- | ---------------------------------- | --------------------- | ------- |
-|   1 | resources/drivel.md |    3 |  14 | quick as lightning  | A tired phrase.                    | default/cliches       | warning |
-|   2 | resources/drivel.md |    7 |  16 | software program    | Pleonastic phrase.                 | default/redundancies  | warning |
-|   3 | resources/drivel.md |   11 |  50 | hopefully           | Skunked term: consider rephrasing. | default/skunked-terms | warning |
-|   4 | resources/drivel.md |   18 |   9 | Female booksalesman | Sexist or ridiculous term.         | default/sexism        | warning |
-|   5 | resources/drivel.md |   22 |  14 | FIX THIS            | Draft litter.                      | default/annotations   | warning |
+|   # | File                | Line | Col | Match               | Message                                 | Rule                  | Level   |
+| --: | ------------------- | ---: | --: | ------------------- | --------------------------------------- | --------------------- | ------- |
+|   1 | resources/drivel.md |    3 |  14 | quick as lightning  | Cliché: say it in your own words.       | default/cliches       | warning |
+|   2 | resources/drivel.md |    7 |  16 | software program    | Redundant: “program” says it.           | default/redundancies  | warning |
+|   3 | resources/drivel.md |   11 |  50 | hopefully           | Skunked term: rephrase to avoid it.     | default/skunked-terms | hint    |
+|   4 | resources/drivel.md |   18 |   9 | Female booksalesman | Gendered term: use a neutral one.       | default/sexism        | warning |
+|   5 | resources/drivel.md |   22 |  14 | FIX THIS            | Draft note: resolve it, then remove it. | default/annotations   | error   |

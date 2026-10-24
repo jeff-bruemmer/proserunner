@@ -1,7 +1,8 @@
 schema = 1
 name = "Weasel words"
-message = "Vague attribution."
+message = "Vague attribution: say who."
 explain = "Vague phrases that avoid commitment and precision."
+level = "hint"
 
 words = [
     "some people say",

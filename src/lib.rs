@@ -43,7 +43,7 @@
 //! assert_eq!(
 //!     String::from_utf8(out)?,
 //!     "notes.md:1:4: [1] \"utilize\" -> Prefer: use.\n\
-//!      notes.md:1:12: [2] \"the the\" -> Consecutive word repetition.\n"
+//!      notes.md:1:12: [2] \"the the\" -> Repeated word: delete one.\n"
 //! );
 //! # Ok(())
 //! # }

@@ -18,7 +18,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
       "name": "Clichés",
       "level": "warning",
       "match": "quick as lightning",
-      "message": "A tired phrase.",
+      "message": "Cliché: say it in your own words.",
       "suggestions": []
     },
     {
@@ -34,8 +34,10 @@ expression: "output(&[\"resources/drivel.md\"], format)"
       "name": "Redundancies",
       "level": "warning",
       "match": "software program",
-      "message": "Pleonastic phrase.",
-      "suggestions": []
+      "message": "Redundant: “program” says it.",
+      "suggestions": [
+        "program"
+      ]
     },
     {
       "number": 3,
@@ -48,9 +50,9 @@ expression: "output(&[\"resources/drivel.md\"], format)"
       "byte_end": 205,
       "rule": "default/skunked-terms",
       "name": "Skunked terms",
-      "level": "warning",
+      "level": "hint",
       "match": "hopefully",
-      "message": "Skunked term: consider rephrasing.",
+      "message": "Skunked term: rephrase to avoid it.",
       "suggestions": []
     },
     {
@@ -66,7 +68,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
       "name": "Sexism",
       "level": "warning",
       "match": "Female booksalesman",
-      "message": "Sexist or ridiculous term.",
+      "message": "Gendered term: use a neutral one.",
       "suggestions": []
     },
     {
@@ -80,9 +82,9 @@ expression: "output(&[\"resources/drivel.md\"], format)"
       "byte_end": 373,
       "rule": "default/annotations",
       "name": "Annotations",
-      "level": "warning",
+      "level": "error",
       "match": "FIX THIS",
-      "message": "Draft litter.",
+      "message": "Draft note: resolve it, then remove it.",
       "suggestions": []
     }
   ]

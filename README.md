@@ -8,19 +8,33 @@ lets you ignore what you don't care about by number.
 $ proserunner document.md
 
 document.md
-[1]   3:14  "quick as lightning"  -> A tired phrase.
-[2]   7:16  "software program"    -> Pleonastic phrase.
-[3]  11:50  "hopefully"           -> Skunked term: consider rephrasing.
-[4]  18:9   "Female booksalesman" -> Sexist or ridiculous term.
-[5]  22:14  "FIX THIS"            -> Draft litter.
-Found 5 issues.
+[1]   3:14  warning  "quick as lightning"  -> Cliché: say it in your own words.        default/cliches
+[2]   7:16  warning  "software program"    -> Redundant: “program” says it.            default/redundancies
+[3]  11:50  hint     "hopefully"           -> Skunked term: rephrase to avoid it.      default/skunked-terms
+[4]  18:9   warning  "Female booksalesman" -> Gendered term: use a neutral one.        default/sexism
+[5]  22:14  error    "FIX THIS"            -> Draft note: resolve it, then remove it.  default/annotations
+Checked 1 file and found 5 issues: 1 error, 3 warnings and 1 hint.
 ```
 
-Fix what matters, and ignore the rest by number:
+Each issue ends with its rule's id, the name that config, inline control
+and `proserunner explain` take. Fix what matters, and ignore the rest by
+the numbers you saw:
 
 ```console
 $ proserunner document.md --ignore-issues 2,3
+Ignored 2 issues in the global ignore list (~/.config/proserunner/ignores.toml), each wherever its match is in its file:
+  [2] "software program" in document.md (default/redundancies)
+  [3] "hopefully" in document.md (default/skunked-terms)
+
+document.md
+[1]   3:14  warning  "quick as lightning"  -> Cliché: say it in your own words.        default/cliches
+[2]  18:9   warning  "Female booksalesman" -> Gendered term: use a neutral one.        default/sexism
+[3]  22:14  error    "FIX THIS"            -> Draft note: resolve it, then remove it.  default/annotations
+Checked 1 file and found 3 issues: 1 error and 2 warnings.
 ```
+
+The numbers are the ones the last run showed, so fixing an issue first
+doesn't make them name others. What's left is shown again, renumbered.
 
 ## Install
 
@@ -51,7 +65,10 @@ file are skipped. A file you name is checked anyway, unless you pass
 `--force-exclude`.
 
 Results go to standard output. The summary, warnings and errors go to
-standard error.
+standard error. A directory with nothing to check says so, and the
+summary counts the files checked, so a run that checked nothing never
+looks like a clean one. In a terminal, results are in color; `NO_COLOR`
+turns it off, and `CLICOLOR_FORCE` keeps it in a pipe.
 
 | Exit status | Meaning |
 | --- | --- |
@@ -114,6 +131,14 @@ words, patterns and examples.
 Each built-in rule's id is `default/<name>`, such as `default/hedging`.
 The rules are pinned to the release, so results never change under you.
 
+Rules have levels. `repetition`, `annotations` and `non-words` find
+near-certain mistakes, so they're errors. `overused-adverbs`, `hedging`,
+`weasel-words` and `skunked-terms` give style advice, so they're hints.
+The rest are warnings. Errors and warnings make a run exit 1, and hints
+don't; `--fail-on error` keeps a CI check to errors. A run with many
+issues ends by naming the rules that found the most, as a place to start
+tuning.
+
 ## Make it yours
 
 - **Turn rules off or change their level:** see [Config](docs/config.md).
@@ -156,8 +181,9 @@ The rules are pinned to the release, so results never change under you.
   <!-- proserunner-disable-next-line default/cliches -- quoting the brief -->
   ```
 
-- **Ignore issues:** by number (`--ignore-issues 1,3`), every issue this
-  run found (`--ignore-all`), or a word everywhere
+- **Ignore issues:** by the numbers the last run showed
+  (`--ignore-issues 1,3`), every issue this run found (`--ignore-all`),
+  or a word everywhere
   (`proserunner ignore add hopefully`). See [Ignores](docs/config.md#ignores).
 
 Mistakes are never silent. A config with an unknown key or a misspelled

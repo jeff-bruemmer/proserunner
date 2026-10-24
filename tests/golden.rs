@@ -18,6 +18,7 @@ fn output(files: &[&str], format: &str) -> String {
         .current_dir(root)
         .env("HOME", home.path())
         .env("XDG_CONFIG_HOME", home.path().join(".config"))
+        .env("XDG_CACHE_HOME", home.path().join(".cache"))
         .args(files)
         .args(["-o", format])
         .output()

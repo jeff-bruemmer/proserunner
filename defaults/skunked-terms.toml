@@ -1,7 +1,8 @@
 schema = 1
 name = "Skunked terms"
-message = "Skunked term: consider rephrasing."
+message = "Skunked term: rephrase to avoid it."
 explain = "Words with controversial correct usage that are best avoided."
+level = "hint"
 
 words = [
     "bona fides",
@@ -12,7 +13,6 @@ words = [
     "hopefully",
     "impassionate",
     "thankfully,",
-    "irregardless",
     "inflammable",
     "bimonthly",
     "biweekly",

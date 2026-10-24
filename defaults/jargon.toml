@@ -1,6 +1,6 @@
 schema = 1
 name = "Jargon"
-message = "Jargon."
+message = "Jargon: say it plainly."
 explain = "Phrases infected with bureaucracy."
 
 words = [
@@ -10,12 +10,7 @@ words = [
     "per your order",
     "per your request",
     "disincentivize",
-    "at this point in time",
-    "due to the fact that",
-    "in the event that",
     "it is imperative that",
-    "subsequent to",
-    "with regard to",
 ]
 
 [examples]

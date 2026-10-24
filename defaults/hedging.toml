@@ -2,6 +2,7 @@ schema = 1
 name = "Hedging"
 message = "Omit this phrase."
 explain = "Say, or say not. There is no hedging."
+level = "hint"
 
 words = [
     "I think",

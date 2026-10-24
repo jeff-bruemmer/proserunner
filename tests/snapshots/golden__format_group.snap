@@ -4,8 +4,8 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 ---
 
 resources/drivel.md
-[1]   3:14  "quick as lightning"  -> A tired phrase.
-[2]   7:16  "software program"    -> Pleonastic phrase.
-[3]  11:50  "hopefully"           -> Skunked term: consider rephrasing.
-[4]  18:9   "Female booksalesman" -> Sexist or ridiculous term.
-[5]  22:14  "FIX THIS"            -> Draft litter.
+[1]   3:14  warning  "quick as lightning"  -> Cliché: say it in your own words.        default/cliches
+[2]   7:16  warning  "software program"    -> Redundant: “program” says it.            default/redundancies
+[3]  11:50  hint     "hopefully"           -> Skunked term: rephrase to avoid it.      default/skunked-terms
+[4]  18:9   warning  "Female booksalesman" -> Gendered term: use a neutral one.        default/sexism
+[5]  22:14  error    "FIX THIS"            -> Draft note: resolve it, then remove it.  default/annotations

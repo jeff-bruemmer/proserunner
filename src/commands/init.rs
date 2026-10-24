@@ -52,5 +52,6 @@ pub(crate) fn init(ctx: &Ctx) -> Result<u8> {
             ctx.display(&rules_dir)
         ),
     );
+    console::status(ctx, "Next, check the project: proserunner .");
     Ok(EXIT_OK)
 }

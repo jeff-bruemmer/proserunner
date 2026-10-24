@@ -92,6 +92,7 @@ fuzz_target!(|data: &[u8]| {
     let report = report::build(&RULES, &documents);
     for output in Output::all() {
         format::write(&mut io::sink(), &report, output, Path::new("/")).unwrap();
+        format::write_styled(&mut io::sink(), &report, output, Path::new("/")).unwrap();
     }
 
     // XML 1.0 can't hold every character a document can, so Checkstyle

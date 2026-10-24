@@ -4,8 +4,6 @@ message = "Avoid corporate-speak."
 explain = "Words and phrases that make you sound like an automaton."
 
 words = [
-    "at the end of the day",
-    "back to the drawing board",
     "hit the ground running",
     "get the ball rolling",
     "low-hanging fruit",
@@ -17,7 +15,6 @@ words = [
     "ping me",
     "i don't have the bandwidth",
     "no brainer",
-    "par for the course",
     "bang for your buck",
     "synergy",
     "move the goal post",
@@ -44,16 +41,15 @@ words = [
     "run it up the flagpole",
     "skin in the game",
     "solutioning",
-    "thought leader",
+    "thought leader{,s}",
     "touchpoint",
     "value-add",
     "wheelhouse",
     "learnings",
-    "asks",
     "circling back",
     "circle back",
     "level set",
 ]
 
 [examples]
-bad = ["Example: at the end of the day."]
+bad = ["Example: thought leader."]

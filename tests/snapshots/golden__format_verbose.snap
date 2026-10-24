@@ -12,7 +12,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 
 > cliche: I am quick as lightning.
 
-**Problem:** `quick as lightning`: A tired phrase.
+**Problem:** `quick as lightning`: Cliché: say it in your own words.
 
 **Why:** An overused phrase or opinion that betrays a lack of original thought.
 
@@ -24,7 +24,9 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 
 > redundancy: Is software program redundant?
 
-**Problem:** `software program`: Pleonastic phrase.
+**Problem:** `software program`: Redundant: “program” says it.
+
+**Suggestions:** `program`.
 
 **Why:** Avoid phrases that say the same thing more than once.
 
@@ -32,11 +34,11 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 
 ## 3. Skunked terms (`default/skunked-terms`)
 
-`[ROOT]/resources/drivel.md:11:50` · warning
+`[ROOT]/resources/drivel.md:11:50` · hint
 
 > skunked-term: This paragraph has a skunked term, hopefully.
 
-**Problem:** `hopefully`: Skunked term: consider rephrasing.
+**Problem:** `hopefully`: Skunked term: rephrase to avoid it.
 
 **Why:** Words with controversial correct usage that are best avoided.
 
@@ -48,7 +50,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 
 > sexism: Female booksalesman is a sexist and ridiculous term.
 
-**Problem:** `Female booksalesman`: Sexist or ridiculous term.
+**Problem:** `Female booksalesman`: Gendered term: use a neutral one.
 
 **Why:** Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_).
 
@@ -56,11 +58,11 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 
 ## 5. Annotations (`default/annotations`)
 
-`[ROOT]/resources/drivel.md:22:14` · warning
+`[ROOT]/resources/drivel.md:22:14` · error
 
 > annotations: FIX THIS.
 
-**Problem:** `FIX THIS`: Draft litter.
+**Problem:** `FIX THIS`: Draft note: resolve it, then remove it.
 
 **Why:** Typical markers used to signal problem sites in the text.
 

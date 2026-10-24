@@ -135,14 +135,16 @@ $ cargo check --manifest-path fuzz/Cargo.toml --bins
 The last two check doc links and the fuzz targets, which are a crate of
 their own; `cargo test` covers neither. `unwrap`, `expect` and `panic!`
 are denied outside tests. The tests are
-hermetic: each black-box test gets its own home and config directory.
+hermetic: each black-box test gets its own home, config and cache
+directories.
 
 To run the binary by hand, give it a scratch home too. Every command
 first converts any 0.8 settings it finds, and with your real `HOME` that
-means your own `~/.config/proserunner/`:
+means your own `~/.config/proserunner/`. A check also keeps its issue
+numbers in the cache directory:
 
 ```console
-$ HOME=/tmp/pr XDG_CONFIG_HOME=/tmp/pr/.config target/debug/proserunner docs/
+$ HOME=/tmp/pr XDG_CONFIG_HOME=/tmp/pr/.config XDG_CACHE_HOME=/tmp/pr/.cache target/debug/proserunner docs/
 ```
 
 ## The golden corpus

@@ -1,7 +1,8 @@
 schema = 1
 name = "Overused adverbs"
-message = "Overused adverb."
+message = "Overused adverb: cut it, or use a stronger verb."
 explain = "Use of adverbs that are weak or redundant. Consider using a stronger verb instead."
+level = "hint"
 
 words = [
     "very",

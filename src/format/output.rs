@@ -48,9 +48,11 @@ struct Writer {
     /// Whether "Found 3 issues." goes to standard error after the report.
     /// Formats for programs go without, and `verbose` has its own.
     summary: bool,
+    /// Whether [`write_styled`] adds ANSI styles to it.
+    styles: bool,
     /// Writes a report; the path is what relative paths in it are
-    /// relative to.
-    write: fn(&mut dyn Write, &Report<'_>, &Path) -> io::Result<()>,
+    /// relative to, and the flag says whether to style it.
+    write: fn(&mut dyn Write, &Report<'_>, &Path, bool) -> io::Result<()>,
 }
 
 /// Every output format, in `Output` order. A new format is a variant, a
@@ -60,49 +62,57 @@ const WRITERS: [Writer; 8] = [
         output: Output::Group,
         name: "group",
         summary: true,
-        write: |out, report, _| group::write(out, report),
+        styles: true,
+        write: |out, report, _, styled| group::write(out, report, styled),
     },
     Writer {
         output: Output::Plain,
         name: "plain",
         summary: false,
-        write: |out, report, _| plain::write(out, report),
+        styles: false,
+        write: |out, report, _, _| plain::write(out, report),
     },
     Writer {
         output: Output::Table,
         name: "table",
         summary: true,
-        write: |out, report, _| table::write(out, report),
+        styles: false,
+        write: |out, report, _, _| table::write(out, report),
     },
     Writer {
         output: Output::Verbose,
         name: "verbose",
         summary: false,
-        write: |out, report, _| verbose::write(out, report),
+        styles: false,
+        write: |out, report, _, _| verbose::write(out, report),
     },
     Writer {
         output: Output::Json,
         name: "json",
         summary: false,
-        write: |out, report, _| json::write(out, report),
+        styles: false,
+        write: |out, report, _, _| json::write(out, report),
     },
     Writer {
         output: Output::Sarif,
         name: "sarif",
         summary: false,
-        write: sarif::write,
+        styles: false,
+        write: |out, report, cwd, _| sarif::write(out, report, cwd),
     },
     Writer {
         output: Output::Github,
         name: "github",
         summary: false,
-        write: github::write,
+        styles: false,
+        write: |out, report, cwd, _| github::write(out, report, cwd),
     },
     Writer {
         output: Output::Checkstyle,
         name: "checkstyle",
         summary: false,
-        write: checkstyle::write,
+        styles: false,
+        write: |out, report, cwd, _| checkstyle::write(out, report, cwd),
     },
 ];
 
@@ -133,6 +143,12 @@ impl Output {
         self.writer().summary
     }
 
+    /// Whether [`write_styled`] styles this format: only `group`, the
+    /// format for people. The others are the same either way.
+    pub fn has_styles(self) -> bool {
+        self.writer().styles
+    }
+
     fn writer(self) -> &'static Writer {
         &WRITERS[self as usize]
     }
@@ -152,7 +168,20 @@ pub fn write(
     format: Output,
     cwd: &Path,
 ) -> io::Result<()> {
-    (format.writer().write)(out, report, cwd)
+    (format.writer().write)(out, report, cwd, false)
+}
+
+/// Like [`write()`], with ANSI styles in the formats that
+/// [`Output::has_styles`] names. They're written whatever `out` is, so
+/// pass a stream that drops them where they don't belong, such as
+/// `anstream::AutoStream`.
+pub fn write_styled(
+    out: &mut dyn Write,
+    report: &Report<'_>,
+    format: Output,
+    cwd: &Path,
+) -> io::Result<()> {
+    (format.writer().write)(out, report, cwd, true)
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 //! The harness for black-box tests: argv in; exit status, stdout and
-//! stderr out. Each test gets its own directory, home and config
-//! directory, so none touch the real ones. The directory is a git
+//! stderr out. Each test gets its own directory, home, and config and
+//! cache directories, so none touch the real ones. The directory is a git
 //! repository root, so project discovery stops there.
 
 #![allow(dead_code, clippy::unwrap_used)]
@@ -57,7 +57,8 @@ impl Env {
         let mut cmd = Command::cargo_bin("proserunner").unwrap();
         cmd.current_dir(cwd)
             .env("HOME", self.path("home"))
-            .env("XDG_CONFIG_HOME", self.path("home/.config"));
+            .env("XDG_CONFIG_HOME", self.path("home/.config"))
+            .env("XDG_CACHE_HOME", self.path("home/.cache"));
         cmd
     }
 }
@@ -68,7 +69,8 @@ impl Env {
         let mut cmd = process::Command::new(cargo::cargo_bin("proserunner"));
         cmd.current_dir(self.root())
             .env("HOME", self.path("home"))
-            .env("XDG_CONFIG_HOME", self.path("home/.config"));
+            .env("XDG_CONFIG_HOME", self.path("home/.config"))
+            .env("XDG_CACHE_HOME", self.path("home/.cache"));
         cmd
     }
 }
@@ -112,4 +114,4 @@ pub(crate) fn files(dir: &Path) -> Vec<String> {
 
 pub(crate) const CLEAN: &str = "A short, plain sentence.\n";
 pub(crate) const DIRTY: &str =
-    "We utilize synergy.\n\nIt failed due to the fact\nthat it rained.\n";
+    "We utilize synergy.\n\nIt failed due to the fact\nthat it rained, per your request.\n";

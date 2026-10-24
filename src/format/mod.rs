@@ -11,4 +11,4 @@ mod sarif;
 mod table;
 mod verbose;
 
-pub use output::{Output, write};
+pub use output::{Output, write, write_styled};

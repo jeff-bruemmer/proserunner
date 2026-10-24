@@ -1,7 +1,8 @@
 schema = 1
 name = "Repetition"
-message = "Consecutive word repetition."
+message = "Repeated word: delete one."
 explain = "Catches consecutive repetition of words, like _the the_."
+level = "error"
 repeat = true
 
 [examples]

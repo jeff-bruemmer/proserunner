@@ -28,6 +28,17 @@ change in detail.
 - A directory check now includes `.mdx`, `.html`, `.htm`, `.xhtml`,
   `.adoc`, `.asciidoc` and `.typ` files. Exclude them (`check.exclude`, or
   `.proserunnerignore`) to keep a build's output out.
+- Built-in rules have levels: `repetition`, `annotations` and `non-words`
+  are errors; `overused-adverbs`, `hedging`, `weasel-words` and
+  `skunked-terms` are hints, which don't make a run exit 1 by default.
+- No two built-in rules match the same words, so a phrase is reported
+  once: "due to the fact that" is only `compression`'s, "it goes without
+  saying" only `meta-discourse`'s, and so on for 20 phrases. A test keeps
+  it that way.
+- Every `redundancies` entry suggests what to write, and messages say
+  what to do: "Redundant: “program” says it.", not "Pleonastic phrase."
+- `compression` suggests one word for each time phrase ("after" for
+  "subsequent to"), not "before, after, as" for all of them.
 
 ### Added
 
@@ -73,10 +84,21 @@ change in detail.
   editors and other tools can use them.
 - 0.8 settings convert on the first run, and `migrate rules` converts
   check files.
+- The default output shows each issue's level and rule id, in color in a
+  terminal (`NO_COLOR` and `CLICOLOR_FORCE` apply). The summary counts
+  the files checked and the issues at each level, and a long report names
+  the rules that found the most.
+- `--ignore-issues` takes the numbers the last run of the same paths
+  showed, kept in the cache directory, lists each issue it ignores, and
+  shows what's left.
+- A directory named with nothing to check is a warning that names the
+  extensions it doesn't read.
+- `explain` shows the config that turns a rule off. `--help` groups the
+  check options, and `init` says what to run next.
 
 ### Removed
 
 - TeX: `.tex` files aren't checked, since no TeX parser gives the exact
   positions an issue needs.
 - Downloaded checks: the rules are built in.
-- The cache, `--no-cache`, `--cache-dir` and `-o edn`.
+- The results cache, `--no-cache`, `--cache-dir` and `-o edn`.

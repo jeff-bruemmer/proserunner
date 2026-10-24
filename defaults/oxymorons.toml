@@ -1,6 +1,6 @@
 schema = 1
 name = "Oxymorons"
-message = "Oxymoron."
+message = "Oxymoron: the words cancel out; rephrase."
 explain = "Avoid contradictory terms (that aren't funny)."
 
 words = [

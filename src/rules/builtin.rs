@@ -35,3 +35,37 @@ pub fn builtin() -> impl Iterator<Item = RuleSource<'static>> {
 pub fn builtin_files() -> &'static [BuiltinFile] {
     BUILTIN
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::rules::{Engine, RuleSet};
+
+    /// A word in two built-in rules is one phrase reported twice, so each
+    /// belongs to one rule.
+    #[test]
+    fn no_two_builtin_rules_share_a_word() {
+        let compiled = RuleSet::compile(builtin());
+        assert!(compiled.errors.is_empty(), "{:?}", compiled.errors);
+        let mut owners: HashMap<String, &str> = HashMap::new();
+        let mut shared = Vec::new();
+        for rule in compiled.rules.rules() {
+            for entry in 0..rule.entries.len() {
+                let forms = rule.forms(entry).unwrap();
+                let words = forms.iter().filter(|f| f.engine == Engine::Literal);
+                for word in words {
+                    let key = word.text.to_lowercase();
+                    match owners.insert(key.clone(), &rule.id) {
+                        Some(other) if other != rule.id => {
+                            shared.push(format!("{key:?}: {other} and {}", rule.id));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        assert!(shared.is_empty(), "{shared:#?}");
+    }
+}

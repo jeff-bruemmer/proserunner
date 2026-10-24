@@ -20,7 +20,7 @@ fn no_issues_exits_0() {
     let r = run(env.cmd().arg("clean.md"));
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert_eq!(r.stdout, "");
-    assert_eq!(r.stderr, "No issues found.\n");
+    assert_eq!(r.stderr, "Checked 1 file and found no issues.\n");
 }
 
 #[test]
@@ -30,8 +30,94 @@ fn issues_exit_1_with_results_on_stdout_and_summary_on_stderr() {
     let r = run(env.cmd().arg("dirty.md"));
     assert_eq!(r.code, 1, "{}", r.stderr);
     assert!(r.stdout.starts_with("\ndirty.md\n[1]"), "{}", r.stdout);
-    assert!(r.stderr.starts_with("Found "), "{}", r.stderr);
-    assert!(!r.stdout.contains("Found"));
+    assert_eq!(r.stderr, "Checked 1 file and found 4 issues.\n");
+    assert!(!r.stdout.contains("Checked"));
+}
+
+#[test]
+fn the_summary_breaks_issues_down_by_level() {
+    let env = Env::new();
+    // An error (a repeated word), a warning and a hint.
+    env.write("a.md", "We utilize the the plan, perhaps.\n");
+    let r = run(env.cmd().arg("a.md"));
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Checked 1 file and found 3 issues: 1 error, 1 warning and 1 hint.\n"
+    );
+    assert!(r.stdout.contains("  error    \"the the\""), "{}", r.stdout);
+    let r = run(env.cmd().args(["a.md", "--fail-on", "error", "-q"]));
+    assert_eq!(r.code, 1);
+    assert_eq!(r.stderr, "");
+}
+
+#[test]
+fn a_long_report_names_the_rules_that_found_the_most() {
+    let env = Env::new();
+    let mut text = "We utilize it, perhaps.\n\n".repeat(12);
+    text.push_str("Very good.\n");
+    env.write("a.md", &text);
+    let r = run(env.cmd().arg("a.md"));
+    assert_eq!(
+        r.stderr,
+        "Checked 1 file and found 25 issues: 12 warnings and 13 hints.\n\
+         The rules that found the most:\n  \
+         12  default/hedging\n  \
+         12  default/needless-variants\n   \
+         1  default/overused-adverbs\n\
+         'proserunner explain RULE' shows what a rule matches and how to turn it off.\n"
+    );
+    // A short report doesn't.
+    env.write("b.md", "We utilize it.\n");
+    let r = run(env.cmd().arg("b.md"));
+    assert_eq!(r.stderr, "Checked 1 file and found 1 issue.\n");
+}
+
+#[test]
+fn group_output_is_styled_only_where_color_is_wanted() {
+    let env = Env::new();
+    env.write("dirty.md", DIRTY);
+    let plain = run(env.cmd().arg("dirty.md"));
+    assert!(!plain.stdout.contains('\u{1b}'), "{}", plain.stdout);
+    let forced = run(env.cmd().arg("dirty.md").env("CLICOLOR_FORCE", "1"));
+    assert!(
+        forced.stdout.contains("\u{1b}[1m\"utilize\"\u{1b}[0m"),
+        "{}",
+        forced.stdout
+    );
+    let off = run(env
+        .cmd()
+        .arg("dirty.md")
+        .env("CLICOLOR_FORCE", "1")
+        .env("NO_COLOR", "1"));
+    assert_eq!(off.stdout, plain.stdout);
+    // Formats for programs are never styled.
+    let json = run(env
+        .cmd()
+        .args(["dirty.md", "-o", "json"])
+        .env("CLICOLOR_FORCE", "1"));
+    assert!(!json.stdout.contains('\u{1b}'), "{}", json.stdout);
+}
+
+#[test]
+fn a_directory_with_nothing_to_check_says_why() {
+    let env = Env::new();
+    env.write("docs/a.rst", "Hopefully.\n");
+    env.write("docs/b.TEX", "Hopefully.\n");
+    env.write("docs/Makefile", "all:\n");
+    let r = run(env.cmd().arg("docs"));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "proserunner: docs: no files to check; proserunner doesn't read .rst and .tex files (config's [formats] can map an extension to a format it reads)\n\
+         Checked no files.\n"
+    );
+    fs::create_dir(env.path("empty")).unwrap();
+    let r = run(env.cmd().arg("empty"));
+    assert_eq!(
+        r.stderr,
+        "proserunner: empty: no files to check\nChecked no files.\n"
+    );
 }
 
 #[test]
@@ -89,15 +175,15 @@ fn group_output() {
     let env = Env::new();
     env.write("dirty.md", DIRTY);
     let r = run(env.cmd().arg("dirty.md"));
-    // Columns line up across every row; one rule's issue doesn't hide
-    // another rule's issue on the same words.
+    // Columns line up across every row, and each row ends with the id
+    // that config and directives take.
     assert_eq!(
         r.stdout,
         "\ndirty.md\n\
-         [1]  1:4   \"utilize\"              -> Prefer: use.\n\
-         [2]  1:12  \"synergy\"              -> Avoid corporate-speak.\n\
-         [3]  3:11  \"due to the fact that\" -> Prefer: because, since, why.\n\
-         [4]  3:11  \"due to the fact that\" -> Jargon.\n"
+         [1]  1:4   warning  \"utilize\"              -> Prefer: use.                  default/needless-variants\n\
+         [2]  1:12  warning  \"synergy\"              -> Avoid corporate-speak.        default/corporate-speak\n\
+         [3]  3:11  warning  \"due to the fact that\" -> Prefer: because, since, why.  default/compression\n\
+         [4]  4:17  warning  \"per your request\"     -> Jargon: say it plainly.       default/jargon\n"
     );
 }
 
@@ -688,7 +774,7 @@ fn table_output_is_a_markdown_table() {
          | --: | ---- | ---: | --: | ------- | ------------ | ------------------------- | ------- |\n\
          |   1 | t.md |    1 |   4 | utilize | Prefer: use. | default/needless-variants | warning |\n"
     );
-    assert_eq!(r.stderr, "Found 1 issue.\n");
+    assert_eq!(r.stderr, "Checked 1 file and found 1 issue.\n");
 }
 
 #[test]
@@ -715,9 +801,14 @@ fn github_output_is_workflow_annotations() {
     // A match across lines has no columns: GitHub reads them only within
     // one line.
     assert_eq!(
+        lines[2],
+        "::warning file=docs/a.md,line=3,endLine=4,title=Compression (default/compression)::\
+         \"due to the fact that\" -> Prefer: because, since, why."
+    );
+    assert_eq!(
         lines[3],
-        "::error file=docs/a.md,line=3,endLine=4,title=Jargon (default/jargon)::\
-         \"due to the fact that\" -> Jargon."
+        "::error file=docs/a.md,line=4,endLine=4,col=17,endColumn=33,title=Jargon (default/jargon)::\
+         \"per your request\" -> Jargon: say it plainly."
     );
     assert_eq!(r.stderr, "", "annotations have no summary line");
 }
@@ -741,7 +832,7 @@ fn checkstyle_output_lists_every_file_checked() {
          <error line=\"1\" column=\"4\" severity=\"warning\" message=\"&quot;utilize&quot; -&gt; Prefer: use.\" source=\"default/needless-variants\"/>\n    \
          <error line=\"1\" column=\"12\" severity=\"info\" message=\"&quot;synergy&quot; -&gt; Avoid corporate-speak.\" source=\"default/corporate-speak\"/>\n    \
          <error line=\"3\" column=\"11\" severity=\"warning\" message=\"&quot;due to the fact that&quot; -&gt; Prefer: because, since, why.\" source=\"default/compression\"/>\n    \
-         <error line=\"3\" column=\"11\" severity=\"warning\" message=\"&quot;due to the fact that&quot; -&gt; Jargon.\" source=\"default/jargon\"/>\n  \
+         <error line=\"4\" column=\"17\" severity=\"warning\" message=\"&quot;per your request&quot; -&gt; Jargon: say it plainly.\" source=\"default/jargon\"/>\n  \
          </file>\n  \
          <file name=\"docs/clean.md\"/>\n\
          </checkstyle>\n"
@@ -774,7 +865,7 @@ fn verbose_output_is_a_markdown_report() {
     assert!(
         r.stdout.contains(&format!(
             "## 3. Compression (`default/compression`)\n\n`{abs}:3:11` · warning\n\n\
-             > It failed due to the fact\n> that it rained.\n\n\
+             > It failed due to the fact\n> that it rained, per your request.\n\n\
              **Problem:** `due to the fact that`: Prefer: because, since, why.\n\n\
              **Suggestions:** `because`, `since`, `why`.\n"
         )),
@@ -908,6 +999,9 @@ fn help_has_examples_and_every_command() {
             "{command}: {}",
             r.stdout
         );
+    }
+    for heading in ["Input:", "What to check:", "Output:", "Ignoring:"] {
+        assert!(r.stdout.contains(&format!("\n{heading}\n")), "{heading}");
     }
     assert!(r.stdout.contains("Examples:\n"), "{}", r.stdout);
     assert!(r.stdout.contains("Exit status: 0"), "{}", r.stdout);

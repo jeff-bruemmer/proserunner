@@ -196,7 +196,7 @@ Ignores are what proserunner writes for you, kept apart from config in
 `.proserunner/ignores.toml`.
 
 ```console
-$ proserunner document.md --ignore-issues 1,3-5   # These issues, by number
+$ proserunner document.md --ignore-issues 1,3-5   # These issues, by the last run's numbers
 $ proserunner document.md --ignore-all            # Every issue this run found
 $ proserunner ignore add hopefully "very unique"  # These words, everywhere
 $ proserunner ignore remove hopefully
@@ -212,6 +212,15 @@ $ proserunner document.md --no-ignores            # A run without ignores
 - **Numbered issues:** an issue ignored by number is ignored in that file
   for that rule wherever the same words appear. Edits that move it don't
   bring it back.
+- **Which numbers:** `--ignore-issues` takes the numbers the last run of
+  the same paths, from the same directory, showed. So fixing an issue
+  before ignoring others doesn't make the numbers name different issues.
+  It lists each issue it ignores, skips one that's gone since, and then
+  shows what's left, renumbered, with the exit status of a check. After a
+  run of other paths, the numbers are the current run's. The last run's
+  numbers are kept in `~/.cache/proserunner/` (or
+  `$XDG_CACHE_HOME/proserunner/`); a run that can't write there still
+  succeeds.
 - **Matching:** words are compared like `accept`: whole matches, any
   case.
 - **Comments:** proserunner keeps the comments you add to an

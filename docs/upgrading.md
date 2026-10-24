@@ -133,7 +133,12 @@ work as before, as do `init`, `--ignore-issues`, `--ignore-all`,
 - **`--ignore-issues`:** in 0.8, an issue ignored by number was ignored
   on its line. Now it's ignored in that file for that rule, wherever the
   same words appear, so edits that move it don't bring it back. Ignores
-  converted from 0.8 keep their lines.
+  converted from 0.8 keep their lines. Its numbers are the ones the last
+  run of the same paths showed, it lists what it ignores, and it shows
+  what's left, so it exits 1 when issues remain.
+- **Levels:** built-in rules have levels. Hints (`overused-adverbs`,
+  `hedging`, `weasel-words` and `skunked-terms`) don't make a run exit 1
+  unless you pass `--fail-on hint`.
 - **`init`:** it now writes `.proserunner/config.toml` and
   `.proserunner/rules/`, not `config.edn` and `checks/`.
 
@@ -142,6 +147,8 @@ work as before, as do `init`, `--ignore-issues`, `--ignore-all`,
 | 0.8 | 1.0 |
 | --- | --- |
 | `XDG_CONFIG_HOME` | Same |
-| `PROSERUNNER_CACHE_DIR`, `XDG_CACHE_HOME`, `TMPDIR` | Gone: there's no cache |
+| `XDG_CACHE_HOME` | Where the last run's issue numbers are kept, for `--ignore-issues`; nothing else is cached |
+| `PROSERUNNER_CACHE_DIR`, `TMPDIR` | Gone |
+| | New: `NO_COLOR` and `CLICOLOR_FORCE`, for color in a terminal |
 | `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Gone: proserunner never uses the network |
 | `PROSERUNNER_DEBUG` | Gone: errors say what's wrong without it |

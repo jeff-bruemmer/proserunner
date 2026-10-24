@@ -1,6 +1,6 @@
 schema = 1
 name = "Meta discourse"
-message = "Unnecessary signposting."
+message = "Signposting: cut it and make the point."
 explain = "Self-referential phrases that add no value."
 
 words = [
@@ -23,7 +23,7 @@ words = [
     "it is worth noting",
     "it must be said",
     "it cannot be denied",
-    "it goes without saying",
+    "{it ,}goes without saying",
     "needless to say",
 ]
 

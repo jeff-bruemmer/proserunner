@@ -153,6 +153,12 @@ pub fn render(rule: &Rule, config: &Config, lists: &[List<'_>]) -> String {
             let _ = writeln!(out, "  {line}");
         }
     }
+
+    let _ = write!(
+        out,
+        "\nChange it in config\n  [rule.\"{}\"]\n  level = \"off\"  # or \"hint\", \"warning\" or \"error\"\n",
+        rule.id
+    );
     out
 }
 
@@ -452,6 +458,10 @@ Never reported
 
 Overrides
   "legal/": level off (.proserunner/config.toml)
+
+Change it in config
+  [rule."project/style"]
+  level = "off"  # or "hint", "warning" or "error"
 "#
         );
     }
@@ -499,6 +509,10 @@ Entries
   metric = { formula = "flesch-kincaid", max = 10, per = "document", min-words = 50 }
       a document of 50 words or more above grade 10 by Flesch-Kincaid
       message: {formula} grade level {score}; aim for {limit} or lower.
+
+Change it in config
+  [rule."project/style"]
+  level = "off"  # or "hint", "warning" or "error"
 "#
         );
         let set = rule("schema = 1\nheading-levels = [0]\nlimit = { max = 8, per = \"block\" }");
@@ -545,6 +559,10 @@ Entries
 
 Never reported
   pattern "mac ?os 9"  except, in the rule
+
+Change it in config
+  [rule."project/style"]
+  level = "off"  # or "hint", "warning" or "error"
 "#
         );
     }

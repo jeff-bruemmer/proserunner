@@ -1,6 +1,6 @@
 schema = 1
 name = "Clichés"
-message = "A tired phrase."
+message = "Cliché: say it in your own words."
 explain = "An overused phrase or opinion that betrays a lack of original thought."
 
 words = [
@@ -30,7 +30,6 @@ words = [
     "far be it from me",
     "fast and loose",
     "fills the bill",
-    "first and foremost",
     "get with the program",
     "gilding the lily",
     "have a short fuse",
@@ -72,7 +71,6 @@ words = [
     "the straw that broke the camel's back",
     "thick as thieves",
     "thinking outside the box",
-    "thought leader{,s}",
     "throw the baby out with the bathwater",
     "various and sundry",
     "viable alternative",
@@ -324,7 +322,6 @@ words = [
     "go him one better",
     "go the extra mile",
     "go with the flow",
-    "goes without saying",
     "good as gold",
     "good deed for the day",
     "good things come to those who wait",
@@ -380,7 +377,6 @@ words = [
     "in the thick of it",
     "in your dreams",
     "it ain't over till the fat lady sings",
-    "it goes without saying",
     "it takes all kinds",
     "it takes one to know one",
     "it's a small world",
@@ -489,7 +485,6 @@ words = [
     "naked truth",
     "neat as a pin",
     "needle in a haystack",
-    "needless to say",
     "neither here nor there",
     "never look back",
     "never say never",
@@ -539,7 +534,6 @@ words = [
     "one red cent",
     "only game in town",
     "open a can of worms",
-    "open and shut case",
     "open the flood gates",
     "opportunity doesn't knock twice",
     "out of pocket",
@@ -777,9 +771,7 @@ words = [
     "as a last resort",
     "attached hereto",
     "by no means",
-    "enclosed herewith",
     "if and when",
-    "in reference to",
     "in short supply",
     "in the foreseeable future",
     "in the long run",

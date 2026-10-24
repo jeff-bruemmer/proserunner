@@ -26,7 +26,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
                 "text": "Typical markers used to signal problem sites in the text."
               },
               "defaultConfiguration": {
-                "level": "warning"
+                "level": "error"
               }
             },
             {
@@ -90,7 +90,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
                 "text": "Words with controversial correct usage that are best avoided."
               },
               "defaultConfiguration": {
-                "level": "warning"
+                "level": "note"
               }
             }
           ]
@@ -107,7 +107,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
           "ruleIndex": 1,
           "level": "warning",
           "message": {
-            "text": "A tired phrase."
+            "text": "Cliché: say it in your own words."
           },
           "locations": [
             {
@@ -134,7 +134,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
           "ruleIndex": 2,
           "level": "warning",
           "message": {
-            "text": "Pleonastic phrase."
+            "text": "Redundant: “program” says it."
           },
           "locations": [
             {
@@ -159,9 +159,9 @@ expression: "output(&[\"resources/drivel.md\"], format)"
         {
           "ruleId": "default/skunked-terms",
           "ruleIndex": 4,
-          "level": "warning",
+          "level": "note",
           "message": {
-            "text": "Skunked term: consider rephrasing."
+            "text": "Skunked term: rephrase to avoid it."
           },
           "locations": [
             {
@@ -188,7 +188,7 @@ expression: "output(&[\"resources/drivel.md\"], format)"
           "ruleIndex": 3,
           "level": "warning",
           "message": {
-            "text": "Sexist or ridiculous term."
+            "text": "Gendered term: use a neutral one."
           },
           "locations": [
             {
@@ -213,9 +213,9 @@ expression: "output(&[\"resources/drivel.md\"], format)"
         {
           "ruleId": "default/annotations",
           "ruleIndex": 0,
-          "level": "warning",
+          "level": "error",
           "message": {
-            "text": "Draft litter."
+            "text": "Draft note: resolve it, then remove it."
           },
           "locations": [
             {

@@ -1,6 +1,7 @@
 schema = 1
 name = "Non words"
 explain = "Identifies sequences of letters masquerading as words, and suggests an actual word."
+level = "error"
 
 words = [
     { match = "doubtlessly", suggest = ["doubtless"] },

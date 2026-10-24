@@ -5,10 +5,10 @@ expression: "output(&[\"resources/drivel.md\"], format)"
 <?xml version="1.0" encoding="UTF-8"?>
 <checkstyle version="4.3">
   <file name="resources/drivel.md">
-    <error line="3" column="14" severity="warning" message="&quot;quick as lightning&quot; -&gt; A tired phrase." source="default/cliches"/>
-    <error line="7" column="16" severity="warning" message="&quot;software program&quot; -&gt; Pleonastic phrase." source="default/redundancies"/>
-    <error line="11" column="50" severity="warning" message="&quot;hopefully&quot; -&gt; Skunked term: consider rephrasing." source="default/skunked-terms"/>
-    <error line="18" column="9" severity="warning" message="&quot;Female booksalesman&quot; -&gt; Sexist or ridiculous term." source="default/sexism"/>
-    <error line="22" column="14" severity="warning" message="&quot;FIX THIS&quot; -&gt; Draft litter." source="default/annotations"/>
+    <error line="3" column="14" severity="warning" message="&quot;quick as lightning&quot; -&gt; Cliché: say it in your own words." source="default/cliches"/>
+    <error line="7" column="16" severity="warning" message="&quot;software program&quot; -&gt; Redundant: “program” says it." source="default/redundancies"/>
+    <error line="11" column="50" severity="info" message="&quot;hopefully&quot; -&gt; Skunked term: rephrase to avoid it." source="default/skunked-terms"/>
+    <error line="18" column="9" severity="warning" message="&quot;Female booksalesman&quot; -&gt; Gendered term: use a neutral one." source="default/sexism"/>
+    <error line="22" column="14" severity="error" message="&quot;FIX THIS&quot; -&gt; Draft note: resolve it, then remove it." source="default/annotations"/>
   </file>
 </checkstyle>

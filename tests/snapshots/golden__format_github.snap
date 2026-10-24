@@ -2,8 +2,8 @@
 source: tests/golden.rs
 expression: "output(&[\"resources/drivel.md\"], format)"
 ---
-::warning file=resources/drivel.md,line=3,endLine=3,col=14,endColumn=32,title=Clichés (default/cliches)::"quick as lightning" -> A tired phrase.
-::warning file=resources/drivel.md,line=7,endLine=7,col=16,endColumn=32,title=Redundancies (default/redundancies)::"software program" -> Pleonastic phrase.
-::warning file=resources/drivel.md,line=11,endLine=11,col=50,endColumn=59,title=Skunked terms (default/skunked-terms)::"hopefully" -> Skunked term: consider rephrasing.
-::warning file=resources/drivel.md,line=18,endLine=18,col=9,endColumn=28,title=Sexism (default/sexism)::"Female booksalesman" -> Sexist or ridiculous term.
-::warning file=resources/drivel.md,line=22,endLine=22,col=14,endColumn=22,title=Annotations (default/annotations)::"FIX THIS" -> Draft litter.
+::warning file=resources/drivel.md,line=3,endLine=3,col=14,endColumn=32,title=Clichés (default/cliches)::"quick as lightning" -> Cliché: say it in your own words.
+::warning file=resources/drivel.md,line=7,endLine=7,col=16,endColumn=32,title=Redundancies (default/redundancies)::"software program" -> Redundant: “program” says it.
+::notice file=resources/drivel.md,line=11,endLine=11,col=50,endColumn=59,title=Skunked terms (default/skunked-terms)::"hopefully" -> Skunked term: rephrase to avoid it.
+::warning file=resources/drivel.md,line=18,endLine=18,col=9,endColumn=28,title=Sexism (default/sexism)::"Female booksalesman" -> Gendered term: use a neutral one.
+::error file=resources/drivel.md,line=22,endLine=22,col=14,endColumn=22,title=Annotations (default/annotations)::"FIX THIS" -> Draft note: resolve it, then remove it.

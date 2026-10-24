@@ -1,6 +1,6 @@
 schema = 1
 name = "Archaisms"
-message = "Modernize."
+message = "Archaic: use a current word."
 explain = "Outmoded word or phrase."
 
 words = [
@@ -13,11 +13,9 @@ words = [
     "boughten",
     "brocage",
     "brokage",
-    "camarade",
     "chiefer",
     "chiefest",
     "Christiana",
-    "completely obsolescent",
     "cozen",
     "divers",
     "deflexion",

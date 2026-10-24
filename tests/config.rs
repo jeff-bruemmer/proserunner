@@ -152,7 +152,8 @@ exclude = ["drafts/"]
     );
     env.write("docs/drafts/b.md", DIRTY);
     let r = run(env.cmd().arg("docs"));
-    assert_eq!(r.code, 1, "{}", r.stderr);
+    // Hedging is a hint, and hints don't fail a run by default.
+    assert_eq!(r.code, 0, "{}", r.stderr);
     assert_eq!(
         r.stdout,
         "docs/a.md:1:34: [1] \"I think\" -> Omit this phrase.\n"
@@ -235,7 +236,7 @@ fn stdin_filename_finds_the_project_and_applies_its_settings() {
         .cmd()
         .args(["--stdin-filename", "site/docs/a.md", "--ignore-issues", "1"])
         .write_stdin(DIRTY));
-    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(r.code, 1, "{}", r.stderr);
     let list = env.read("site/.proserunner/ignores.toml");
     assert!(
         list.contains(
@@ -332,6 +333,10 @@ fn project_rules_get_their_prefix() {
     let env = Env::new();
     let r = run(env.cmd().arg("init"));
     assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Created .proserunner/config.toml and .proserunner/rules/.\nNext, check the project: proserunner .\n"
+    );
     assert!(env.path(".proserunner/rules").is_dir());
     env.write(
         ".proserunner/rules/style.toml",
@@ -365,7 +370,7 @@ fn ignore_add_list_and_remove() {
     );
     assert_eq!(
         rules_found(&env, &["dirty.md"]),
-        ["default/needless-variants"]
+        ["default/needless-variants", "default/jargon"]
     );
 
     let r = run(env.cmd().args(["ignore", "add", "Synergy"]));
@@ -383,7 +388,7 @@ fn ignore_add_list_and_remove() {
         r.stderr,
         "proserunner: not in the global ignore list: “absent”\nRemoved “SYNERGY” from the global ignore list.\n"
     );
-    assert_eq!(rules_found(&env, &["dirty.md"]).len(), 2);
+    assert_eq!(rules_found(&env, &["dirty.md"]).len(), 3);
     assert_eq!(rules_found(&env, &["dirty.md", "--no-ignores"]).len(), 4);
 }
 
@@ -392,12 +397,21 @@ fn ignore_issues_by_number_and_all() {
     let env = Env::new();
     env.write(".proserunner/config.toml", "schema = 1\n");
     env.write("dirty.md", DIRTY);
-    let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "2,4"]));
-    assert_eq!(r.code, 0, "{}", r.stderr);
-    assert_eq!(r.stdout, "");
+    let r = run(env
+        .cmd()
+        .args(["dirty.md", "--ignore-issues", "2,4", "-o", "plain"]));
+    // What's left is reported, renumbered, and still fails the run.
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert_eq!(
+        r.stdout,
+        "dirty.md:1:4: [1] \"utilize\" -> Prefer: use.\n\
+         dirty.md:3:11: [2] \"due to the fact that\" -> Prefer: because, since, why.\n"
+    );
     assert_eq!(
         r.stderr,
-        "Ignored 2 issues in the project ignore list (.proserunner/ignores.toml).\n"
+        "Ignored 2 issues in the project ignore list (.proserunner/ignores.toml), each wherever its match is in its file:\n  \
+         [2] \"synergy\" in dirty.md (default/corporate-speak)\n  \
+         [4] \"per your request\" in dirty.md (default/jargon)\n"
     );
     let list = env.read(".proserunner/ignores.toml");
     assert!(
@@ -414,7 +428,7 @@ fn ignore_issues_by_number_and_all() {
     assert_eq!(r.code, 2);
     assert_eq!(
         r.stderr,
-        "proserunner: --ignore-issues: there's no issue 9; this run found 2 (1-2)\n"
+        "proserunner: --ignore-issues: there's no issue 9; the last run found 2 (1-2)\n"
     );
     assert_eq!(env.read(".proserunner/ignores.toml"), list);
     let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "x"]));
@@ -429,6 +443,62 @@ fn ignore_issues_by_number_and_all() {
     assert!(r.stderr.contains("standard input"), "{}", r.stderr);
     let r = run(env.cmd().args(["dirty.md", "--global"]));
     assert_eq!(r.code, 2);
+}
+
+/// Numbers are the ones the last run of the same paths showed, so fixing
+/// one issue and then ignoring others by number ignores the ones shown,
+/// though fixing it moved every number after it.
+#[test]
+fn ignore_issues_takes_the_numbers_the_last_run_showed() {
+    let env = Env::new();
+    env.write(".proserunner/config.toml", "schema = 1\n");
+    env.write("dirty.md", DIRTY);
+    let r = run(env.cmd().args(["dirty.md", "-o", "plain"]));
+    assert!(r.stdout.contains("[2] \"synergy\""), "{}", r.stdout);
+    assert!(
+        r.stdout.contains("[3] \"due to the fact that\""),
+        "{}",
+        r.stdout
+    );
+
+    env.write("dirty.md", &DIRTY.replace("utilize", "use"));
+    let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "2,3"]));
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert!(
+        r.stderr.contains("[2] \"synergy\" in dirty.md"),
+        "{}",
+        r.stderr
+    );
+    assert!(
+        r.stderr
+            .contains("[3] \"due to the fact that\" in dirty.md"),
+        "{}",
+        r.stderr
+    );
+    assert_eq!(rules_found(&env, &["dirty.md"]), ["default/jargon"]);
+
+    // An issue fixed since the last run is skipped, and says so.
+    env.write("dirty.md", "We utilize it.\n");
+    run(env.cmd().arg("dirty.md"));
+    env.write("dirty.md", "We use it.\n");
+    let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "1"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "[1] \"utilize\" in dirty.md (default/needless-variants) isn't there any more.\n\
+         No issues to ignore.\nChecked 1 file and found no issues.\n"
+    );
+
+    // After a run of other paths, numbers are this run's.
+    env.write("dirty.md", DIRTY);
+    env.write("other.md", "We utilize synergy.\n");
+    run(env.cmd().arg("other.md"));
+    let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "1"]));
+    assert!(
+        r.stderr.contains("[1] \"utilize\" in dirty.md"),
+        "{}",
+        r.stderr
+    );
 }
 
 #[test]
@@ -646,7 +716,7 @@ fn b1_project_ignores_use_the_project_root_from_any_subdirectory() {
     let r = run(env
         .cmd_in("docs/guide")
         .args(["dirty.md", "--ignore-issues", "1"]));
-    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(r.code, 1, "{}", r.stderr);
     assert!(!env.path("docs/guide/.proserunner").exists());
     let list = env.read(".proserunner/ignores.toml");
     assert!(list.contains("file = \"docs/guide/dirty.md\""), "{list}");
@@ -701,15 +771,18 @@ fn b3_a_broken_file_is_never_overwritten() {
 }
 
 /// B4: the default checks could download on every run. Now the rules are
-/// built in, and a check writes nothing at all.
+/// built in, and a check writes nothing but the issues it numbered, in the
+/// cache directory, for `--ignore-issues`.
 #[test]
-fn b4_a_check_with_no_config_writes_nothing() {
+fn b4_a_check_with_no_config_writes_only_its_cache() {
     let env = Env::new();
     env.write("dirty.md", DIRTY);
     let before = files(env.root());
     assert_eq!(run(env.cmd().arg("dirty.md")).code, 1);
     assert_eq!(run(env.cmd().arg("rules")).code, 0);
-    assert_eq!(files(env.root()), before);
+    let mut after = files(env.root());
+    after.retain(|f| f != "home/.cache/proserunner/last-run.json");
+    assert_eq!(after, before);
 }
 
 /// B5: `:files` behaved differently in the global and project configs.
@@ -744,7 +817,7 @@ fn b6_a_sibling_with_the_same_prefix_isnt_inside_the_project() {
     let r = run(env
         .cmd_in("proj")
         .args(["../proj-old/dirty.md", "--ignore-issues", "1"]));
-    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(r.code, 1, "{}", r.stderr);
     let list = env.read("proj/.proserunner/ignores.toml");
     let expected = format!("file = \"{}\"", env.path("proj-old/dirty.md").display());
     assert!(list.contains(&expected), "{list}");
@@ -961,7 +1034,7 @@ fn migrates_an_08_project() {
     // inherit = false: the global ignore of "due to the fact that" is out.
     assert_eq!(
         found,
-        ["default/compression", "default/jargon", "checks/rained"]
+        ["default/compression", "checks/rained", "default/jargon"]
     );
     let config = env.read(".proserunner/config.toml");
     assert!(config.contains("inherit = false"), "{config}");
