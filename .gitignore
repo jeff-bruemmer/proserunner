@@ -1,20 +1,3 @@
-.cpcache
-.nrepl-port
-classes
+/target
 notes.md
 .DS_Store
-reports
-proserunner.build_artifacts.txt
-.clj-kondo/*
-!.clj-kondo/config.edn
-!.clj-kondo/hooks/
-.lsp
-.calva
-/proserunner
-
-# Build artifacts
-default.iprof
-
-# Benchmark baseline backup files
-benchmark-baseline*.edn.bak
-

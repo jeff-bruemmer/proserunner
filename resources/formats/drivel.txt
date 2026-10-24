@@ -1,0 +1,22 @@
+Test document
+
+cliche: I am quick as
+lightning, and this phrase wraps across lines.
+
+redundancy: Is software program redundant? See
+https://example.com/software-program for more.
+
+```
+This is a code block with an error error.
+```
+
+proserunner-disable-next-line default/skunked-terms
+skunked-term: This paragraph has a skunked term, hopefully.
+
+skunked-term: This one is reported, hopefully.
+
+sexism: She said "Female booksalesman" in quotes, which is skipped,
+but a Female booksalesman outside quotes is reported.
+
+annotations: FIX THIS. The board is 5" wide, so it can't hide this
+utilize.

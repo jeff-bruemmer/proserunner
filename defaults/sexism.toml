@@ -1,0 +1,53 @@
+schema = 1
+name = "Sexism"
+message = "Sexist or ridiculous term."
+explain = "Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_)."
+
+words = [
+    "anchorman",
+    "anchorwoman",
+    "chairman",
+    "chairwoman",
+    "draftman",
+    "draftwoman",
+    "ombudsman",
+    "ombudswoman",
+    "tribesman",
+    "tribeswoman",
+    "policeman",
+    "policewoman",
+    "fireman",
+    "firewoman",
+    "mailman",
+    "mailwoman",
+    "herstory",
+    "womyn",
+    "poetess",
+    "authoress",
+    "waitress",
+    "lady lawyer",
+    "woman doctor",
+    "female booksalesman",
+    "female airman",
+    "executrix",
+    "prosecutrix",
+    "testatrix",
+    "man and wife",
+    "chairmen and chairs",
+    "men and girls",
+    "comedienne",
+    "confidante",
+    "woman scientist",
+    "women scientists",
+    "anchorperson",
+    "chairperson",
+    "draftperson",
+    "ombudsperson",
+    "tribesperson",
+    "policeperson",
+    "fireperson",
+    "mailperson",
+]
+
+[examples]
+bad = ["Example: anchorman."]

@@ -1,0 +1,13 @@
+schema = 1
+name = "Regex"
+explain = "Raw regular expressions."
+case = "sensitive"
+scope = ["heading"]
+
+patterns = [
+    { match = '\.\s*$', message = "Headings shouldn't end with period." },
+]
+
+[examples]
+bad = ["# A heading that ends with a period."]
+good = ["# A heading", "A sentence ends with a period."]

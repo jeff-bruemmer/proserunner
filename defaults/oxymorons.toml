@@ -1,0 +1,27 @@
+schema = 1
+name = "Oxymorons"
+message = "Oxymoron."
+explain = "Avoid contradictory terms (that aren't funny)."
+
+words = [
+    "amateur expert",
+    "increasingly less",
+    "advancing backward{,s}",
+    "alludes explicitly to",
+    "explicitly alludes to",
+    "totally obsolescent",
+    "completely obsolescent",
+    "generally always",
+    "usually always",
+    "build down",
+    "conspicuous absence",
+    "exact estimate",
+    "found missing",
+    "intense apathy",
+    "mandatory choice",
+    "nonworking mother",
+    "organized mess",
+]
+
+[examples]
+bad = ["Example: amateur expert."]

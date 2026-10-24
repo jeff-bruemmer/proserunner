@@ -1,0 +1,10 @@
+---
+source: tests/golden.rs
+expression: "plain(&[\"resources/formats/drivel.txt\"])"
+---
+resources/formats/drivel.txt:3:14: [1] "quick as lightning" -> A tired phrase.
+resources/formats/drivel.txt:6:16: [2] "software program" -> Pleonastic phrase.
+resources/formats/drivel.txt:16:37: [3] "hopefully" -> Skunked term: consider rephrasing.
+resources/formats/drivel.txt:19:7: [4] "Female booksalesman" -> Sexist or ridiculous term.
+resources/formats/drivel.txt:21:14: [5] "FIX THIS" -> Draft litter.
+resources/formats/drivel.txt:22:1: [6] "utilize" -> Prefer: use.

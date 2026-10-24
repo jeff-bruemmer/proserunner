@@ -1,0 +1,23 @@
+schema = 1
+name = "Weasel words"
+message = "Vague attribution."
+explain = "Vague phrases that avoid commitment and precision."
+
+words = [
+    "some people say",
+    "it has been said",
+    "studies show",
+    "experts believe",
+    "many believe",
+    "it is widely known",
+    "common sense dictates",
+    "conventional wisdom",
+    "most people think",
+    "everyone knows",
+    "some have argued",
+    "critics say",
+    "supporters claim",
+]
+
+[examples]
+bad = ["Example: some people say."]

@@ -1,0 +1,21 @@
+schema = 1
+name = "Overused adverbs"
+message = "Overused adverb."
+explain = "Use of adverbs that are weak or redundant. Consider using a stronger verb instead."
+
+words = [
+    "very",
+    "really",
+    "actually",
+    "absolutely",
+    "completely",
+    "definitely",
+    "extremely",
+    "highly",
+    "quite",
+    "totally",
+    "utterly",
+]
+
+[examples]
+bad = ["Example: very."]

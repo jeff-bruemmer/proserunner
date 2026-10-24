@@ -1,0 +1,23 @@
+schema = 1
+name = "Skunked terms"
+message = "Skunked term: consider rephrasing."
+explain = "Words with controversial correct usage that are best avoided."
+
+words = [
+    "bona fides",
+    "deceptively",
+    "decimate",
+    "effete",
+    "fulsome",
+    "hopefully",
+    "impassionate",
+    "thankfully,",
+    "irregardless",
+    "inflammable",
+    "bimonthly",
+    "biweekly",
+    "nonplussed",
+]
+
+[examples]
+bad = ["Example: bona fides."]

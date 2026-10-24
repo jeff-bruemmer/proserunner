@@ -1,0 +1,42 @@
+schema = 1
+name = "Non words"
+explain = "Identifies sequences of letters masquerading as words, and suggests an actual word."
+
+words = [
+    { match = "doubtlessly", suggest = ["doubtless"] },
+    { match = "analyzation", suggest = ["analysis"] },
+    { match = "annoyment", suggest = ["annoyance"] },
+    { match = "confirmant", suggest = ["confirmand"] },
+    { match = "confirmants", suggest = ["confirmands"] },
+    { match = "conversate", suggest = ["converse"] },
+    { match = "crained", suggest = ["cranded"] },
+    { match = "dispersement", suggest = ["dispersal"] },
+    { match = "discomforture", suggest = ["discomfort"] },
+    { match = "affrontery", suggest = ["effrontery"] },
+    { match = "forebearance", suggest = ["forbearance"] },
+    { match = "improprietous", suggest = ["improper"] },
+    { match = "inclimate", suggest = ["inclement"] },
+    { match = "relative inexpense", suggest = ["affordability"] },
+    { match = "inimicable", suggest = ["inimical"] },
+    { match = "irregardless", suggest = ["regardless"] },
+    { match = "minimalize", suggest = ["minimize"] },
+    { match = "minimalized", suggest = ["minimized"] },
+    { match = "minimalizes", suggest = ["minimizes"] },
+    { match = "minimalizing", suggest = ["minimizing"] },
+    { match = "optimalize", suggest = ["optimize"] },
+    { match = "paralyzation", suggest = ["paralysis"] },
+    { match = "pettifogger", suggest = ["pettifog"] },
+    { match = "proprietous", suggest = ["proper"] },
+    { match = "squelch", suggest = ["quell"] },
+    { match = "seldomly", suggest = ["seldom"] },
+    { match = "thusly", suggest = ["thus"] },
+    { match = "uncategorically", suggest = ["categorically"] },
+    { match = "undoubtably", suggest = ["undoubtedly"] },
+    { match = "unequivocable", suggest = ["unequivocal"] },
+    { match = "unmercilessly", suggest = ["mercilessly"] },
+    { match = "unrelentlessly", suggest = ["relentlessly"] },
+]
+
+[examples]
+bad = ["Example: doubtlessly."]
+fix = [["Example: doubtlessly.", "Example: doubtless."]]

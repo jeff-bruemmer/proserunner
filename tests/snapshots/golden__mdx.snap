@@ -1,0 +1,13 @@
+---
+source: tests/golden.rs
+expression: "plain(&[\"resources/formats/drivel.mdx\"])"
+---
+resources/formats/drivel.mdx:6:15: [1] "quick as lightning" -> A tired phrase.
+resources/formats/drivel.mdx:14:16: [2] "software program" -> Pleonastic phrase.
+resources/formats/drivel.mdx:17:30: [3] "utilize" -> Prefer: use.
+resources/formats/drivel.mdx:20:3: [4] "hopefully" -> Skunked term: consider rephrasing.
+resources/formats/drivel.mdx:21:20: [5] "FIX THIS" -> Draft litter.
+resources/formats/drivel.mdx:27:11: [6] "Female booksalesman" -> Sexist or ridiculous term.
+resources/formats/drivel.mdx:31:3: [7] "synergy" -> Avoid corporate-speak.
+resources/formats/drivel.mdx:37:8: [8] "is is" -> Consecutive word repetition.
+resources/formats/drivel.mdx:37:28: [9] "leverage" -> Prefer: use.

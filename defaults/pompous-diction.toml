@@ -1,0 +1,22 @@
+schema = 1
+name = "Pompous diction"
+explain = "Pompous diction: use simpler words. From Style: Toward Clarity and Grace by Joseph M. Williams."
+
+words = [
+    { match = "contingent upon", suggest = ["dependent on"] },
+    { match = "endeavor", suggest = ["try"] },
+    { match = "utilization", suggest = ["use"] },
+    { match = "is desirous of", suggest = ["wants"] },
+    { match = "is cognizant of", suggest = ["is aware of"] },
+    { match = "facilitate", suggest = ["help"] },
+    { match = "deem", suggest = ["think"] },
+    { match = "envisage", suggest = ["think", "regard", "see"] },
+    { match = "advert to", suggest = ["mention"] },
+    { match = "apprise", suggest = ["inform"] },
+    { match = "eventuate", suggest = ["happen"] },
+    { match = "transpire", suggest = ["happen"] },
+]
+
+[examples]
+bad = ["Example: contingent upon."]
+fix = [["Example: contingent upon.", "Example: dependent on."]]

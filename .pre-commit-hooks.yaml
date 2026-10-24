@@ -1,0 +1,8 @@
+# For https://pre-commit.com. Files that .proserunnerignore, .ignore,
+# .gitignore or config `exclude` skip are skipped here too.
+- id: proserunner
+  name: proserunner
+  description: Check prose in Markdown, MDX, Org, HTML, AsciiDoc, Typst and text files.
+  entry: proserunner --force-exclude
+  language: rust
+  files: (?i)\.(md|markdown|mdx|org|txt|html|htm|xhtml|adoc|asciidoc|typ)$

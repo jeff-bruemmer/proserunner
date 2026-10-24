@@ -1,0 +1,25 @@
+schema = 1
+name = "Hedging"
+message = "Omit this phrase."
+explain = "Say, or say not. There is no hedging."
+
+words = [
+    "I think",
+    "I would argue",
+    "so to speak",
+    "to a certain degree",
+    "it seems that",
+    "seemed to",
+    "what looked like",
+    "it appears that",
+    "it could be argued that",
+    "arguably",
+    "perhaps",
+    "possibly",
+    "to some extent",
+    "somewhat",
+    "in a way",
+]
+
+[examples]
+bad = ["Example: I think."]

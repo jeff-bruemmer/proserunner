@@ -1,0 +1,16 @@
+schema = 1
+name = "Annotations"
+message = "Draft litter."
+explain = "Typical markers used to signal problem sites in the text."
+case = "sensitive"
+
+words = [
+    "FIXME",
+    "FIX ME",
+    "TODO",
+    "ERASE THIS",
+    "FIX THIS",
+]
+
+[examples]
+bad = ["Example: FIXME."]

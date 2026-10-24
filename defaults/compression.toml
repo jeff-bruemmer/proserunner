@@ -1,0 +1,58 @@
+schema = 1
+name = "Compression"
+explain = "Compressing common phrases. From Style: Toward Clarity and Grace by Joseph M. Williams."
+
+words = [
+    { match = "the reason for", suggest = ["because", "since", "why"] },
+    { match = "for the reason that", suggest = ["because", "since", "why"] },
+    { match = "due to the fact that", suggest = ["because", "since", "why"] },
+    { match = "owing to the fact that", suggest = ["because", "since", "why"] },
+    { match = "in light of the fact that", suggest = ["because", "since", "why"] },
+    { match = "considering the fact that", suggest = ["because", "since", "why"] },
+    { match = "on the grounds that", suggest = ["because", "since", "why"] },
+    { match = "this is why", suggest = ["because", "since", "why"] },
+    { match = "despite the fact that", suggest = ["although", "even though"] },
+    { match = "regardless of the fact that", suggest = ["although", "even though"] },
+    { match = "notwithstanding the fact that", suggest = ["although", "even though"] },
+    { match = "in the event that", suggest = ["if"] },
+    { match = "if it should happen that", suggest = ["if"] },
+    { match = "under circumstances in which", suggest = ["if", "when"] },
+    { match = "on the occasion of", suggest = ["when"] },
+    { match = "in a situation in which", suggest = ["when"] },
+    { match = "as regards", suggest = ["about"] },
+    { match = "in reference to", suggest = ["about"] },
+    { match = "with regard to", suggest = ["about"] },
+    { match = "concerning the matter of", suggest = ["about"] },
+    { match = "it is crucial that", suggest = ["must", "should"] },
+    { match = "it is necessary that", suggest = ["must", "should"] },
+    { match = "there is a need for", suggest = ["must", "should"] },
+    { match = "it is important that", suggest = ["must", "should"] },
+    { match = "it is incumbent upon", suggest = ["must", "should"] },
+    { match = "cannot be avoided", suggest = ["must", "should"] },
+    { match = "is able to", suggest = ["can"] },
+    { match = "is in a position to", suggest = ["can"] },
+    { match = "has the opportunity to", suggest = ["can"] },
+    { match = "has the capacity for", suggest = ["can"] },
+    { match = "has the ability to", suggest = ["can"] },
+    { match = "it is possible that", suggest = ["may", "might", "can", "could"] },
+    { match = "there is a chance that", suggest = ["may", "might", "can", "could"] },
+    { match = "it could happen that", suggest = ["may", "might", "can", "could"] },
+    { match = "the possiblity exists for", suggest = ["may", "might", "can", "could"] },
+    { match = "prior to", suggest = ["before", "after", "as"] },
+    { match = "in anticipation of", suggest = ["before", "after", "as"] },
+    { match = "subsequent to", suggest = ["before", "after", "as"] },
+    { match = "following on", suggest = ["before", "after", "as"] },
+    { match = "at the same time as", suggest = ["before", "after", "as"] },
+    { match = "simultaneously with", suggest = ["before", "after", "as"] },
+    { match = "in order to", suggest = ["to"] },
+    { match = "at this point in time", suggest = ["now"] },
+    { match = "until such time as", suggest = ["until"] },
+    { match = "in the absence of", suggest = ["without"] },
+    { match = "with the exception of", suggest = ["except"] },
+    { match = "take into account", suggest = ["consider"] },
+    { match = "take into consideration", suggest = ["consider"] },
+]
+
+[examples]
+bad = ["Example: the reason for."]
+fix = [["Example: the reason for.", "Example: because."]]

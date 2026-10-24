@@ -1,0 +1,46 @@
+= Test Document
+Utilize Synergy <utilize@example.com>
+:toc:
+
+== Clichés
+
+cliche: I am _quick as lightning_.
+
+There is an innocent line, and `utilize()` is code.
+
+// We utilize synergy in a comment.
+
+=== Redundancy
+
+redundancy: Is software program redundant?footnote:[A footnote that should utilize no jargon.]
+See https://example.com/utilize[the guide] or {synergy}.
+
+* skunked-term: this item has a skunked term,
+hopefully.
+* [x] annotations: FIX THIS.
+
+[source,python]
+----
+error = "It has an error error."
+----
+
+[quote, Someone]
+____
+sexism: Female booksalesman is a sexist and ridiculous term.
+____
+
+|===
+|term |note
+
+|synergy
+|corporate-speak cell
+|===
+
+// proserunner-disable-next-line default/repetition
+The the inline control skips this line.
+
+NOTE: This is is repeated, and leverage is jargon. Say "`very unique`" to quote it.
+
+////
+We utilize synergy in a comment block.
+////

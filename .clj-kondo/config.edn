@@ -1,2 +1,0 @@
-{:lint-as {proserunner.test-helpers/with-temp-dir clojure.core/let}
- :hooks {:macroexpand {proserunner.test-helpers/with-temp-dirs hooks.test-helpers/with-temp-dirs}}}

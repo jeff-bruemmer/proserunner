@@ -1,0 +1,11 @@
+---
+source: tests/golden.rs
+expression: "output(&[\"resources/drivel.md\"], format)"
+---
+
+resources/drivel.md
+[1]   3:14  "quick as lightning"  -> A tired phrase.
+[2]   7:16  "software program"    -> Pleonastic phrase.
+[3]  11:50  "hopefully"           -> Skunked term: consider rephrasing.
+[4]  18:9   "Female booksalesman" -> Sexist or ridiculous term.
+[5]  22:14  "FIX THIS"            -> Draft litter.

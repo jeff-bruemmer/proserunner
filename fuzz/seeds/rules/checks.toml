@@ -1,0 +1,15 @@
+schema = 1
+scope = ["paragraph", "heading", "list"]
+heading-levels = [0, 1, 2]
+except = ["the end"]
+repeat = true
+consistent = [["advisor{,s}", "adviser{,s}"], ["toward", "towards"]]
+limit = { max = 4, unit = "words", per = "sentence" }
+capitalization = { style = "title", except = ["Visual Studio Code"] }
+acronyms = { except = ["HTML"], match = '\b([A-Z]{2,})s?\b', definitions = ['\w \(([^()\s]+?)s?\)', '(?<=\()([A-Z]+)(?=\))'] }
+metric = { formula = "gunning-fog", max = 1.5, per = "block", min-words = 2 }
+
+[examples]
+bad = ["# An Advisor and an adviser", "Use the API."]
+good = ["# An Advisor"]
+fix = [["# a Title", "# A Title"]]

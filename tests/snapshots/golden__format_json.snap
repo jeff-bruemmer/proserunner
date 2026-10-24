@@ -1,0 +1,89 @@
+---
+source: tests/golden.rs
+expression: "output(&[\"resources/drivel.md\"], format)"
+---
+{
+  "version": 1,
+  "issues": [
+    {
+      "number": 1,
+      "file": "resources/drivel.md",
+      "line": 3,
+      "column": 14,
+      "end_line": 3,
+      "end_column": 32,
+      "byte_start": 30,
+      "byte_end": 48,
+      "rule": "default/cliches",
+      "name": "Clichés",
+      "level": "warning",
+      "match": "quick as lightning",
+      "message": "A tired phrase.",
+      "suggestions": []
+    },
+    {
+      "number": 2,
+      "file": "resources/drivel.md",
+      "line": 7,
+      "column": 16,
+      "end_line": 7,
+      "end_column": 32,
+      "byte_start": 94,
+      "byte_end": 110,
+      "rule": "default/redundancies",
+      "name": "Redundancies",
+      "level": "warning",
+      "match": "software program",
+      "message": "Pleonastic phrase.",
+      "suggestions": []
+    },
+    {
+      "number": 3,
+      "file": "resources/drivel.md",
+      "line": 11,
+      "column": 50,
+      "end_line": 11,
+      "end_column": 59,
+      "byte_start": 196,
+      "byte_end": 205,
+      "rule": "default/skunked-terms",
+      "name": "Skunked terms",
+      "level": "warning",
+      "match": "hopefully",
+      "message": "Skunked term: consider rephrasing.",
+      "suggestions": []
+    },
+    {
+      "number": 4,
+      "file": "resources/drivel.md",
+      "line": 18,
+      "column": 9,
+      "end_line": 18,
+      "end_column": 28,
+      "byte_start": 270,
+      "byte_end": 289,
+      "rule": "default/sexism",
+      "name": "Sexism",
+      "level": "warning",
+      "match": "Female booksalesman",
+      "message": "Sexist or ridiculous term.",
+      "suggestions": []
+    },
+    {
+      "number": 5,
+      "file": "resources/drivel.md",
+      "line": 22,
+      "column": 14,
+      "end_line": 22,
+      "end_column": 22,
+      "byte_start": 365,
+      "byte_end": 373,
+      "rule": "default/annotations",
+      "name": "Annotations",
+      "level": "warning",
+      "match": "FIX THIS",
+      "message": "Draft litter.",
+      "suggestions": []
+    }
+  ]
+}

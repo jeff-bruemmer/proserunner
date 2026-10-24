@@ -1,0 +1,29 @@
+schema = 1
+name = "Not the negative"
+explain = "Prefer the word to the negation of the word's opposite."
+
+words = [
+    { match = "not many", suggest = ["few"] },
+    { match = "not the same", suggest = ["different"] },
+    { match = "not different", suggest = ["similar"] },
+    { match = "does not have", suggest = ["lacks"] },
+    { match = "did not stay", suggest = ["left"] },
+    { match = "didn't stay", suggest = ["left"] },
+    { match = "not old enough", suggest = ["too young"] },
+    { match = "did not remember", suggest = ["forgot"] },
+    { match = "didn't remember", suggest = ["forgot"] },
+    { match = "didn't consider", suggest = ["ignored"] },
+    { match = "did not consider", suggest = ["ignored"] },
+    { match = "didn't allow", suggest = ["prevented"] },
+    { match = "did not allow", suggest = ["prevented"] },
+    { match = "did not accept", suggest = ["rejected"] },
+    { match = "didn't accept", suggest = ["rejected"] },
+    { match = "not clearly", suggest = ["unclearly"] },
+    { match = "not possible", suggest = ["impossible"] },
+    { match = "not able", suggest = ["unable"] },
+    { match = "not certain", suggest = ["uncertain"] },
+]
+
+[examples]
+bad = ["Example: not many."]
+fix = [["Example: not many.", "Example: few."]]

@@ -1,0 +1,273 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "CheckTable": {
+      "additionalProperties": false,
+      "description": "Defaults for `check`'s options.",
+      "properties": {
+        "code-blocks": {
+          "description": "Check code blocks too.",
+          "type": "boolean"
+        },
+        "exclude": {
+          "default": [],
+          "description": "Files to skip, as gitignore patterns. Adds to the list below.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "output": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Output"
+            }
+          ],
+          "description": "How issues are printed when `--output` doesn't say."
+        },
+        "quoted-text": {
+          "description": "Check quoted text too.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Level": {
+      "description": "How serious an issue is.",
+      "enum": [
+        "hint",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Output": {
+      "description": "How issues are printed.",
+      "oneOf": [
+        {
+          "const": "group",
+          "description": "Issues grouped under each file, numbered",
+          "type": "string"
+        },
+        {
+          "const": "plain",
+          "description": "One issue per line: path:line:col: [n] \"match\" -> message",
+          "type": "string"
+        },
+        {
+          "const": "table",
+          "description": "A Markdown table",
+          "type": "string"
+        },
+        {
+          "const": "verbose",
+          "description": "A Markdown report with each issue's line, suggestions and explanation",
+          "type": "string"
+        },
+        {
+          "const": "json",
+          "description": "Machine-readable, versioned",
+          "type": "string"
+        },
+        {
+          "const": "sarif",
+          "description": "SARIF 2.1.0, for code scanning",
+          "type": "string"
+        },
+        {
+          "const": "github",
+          "description": "GitHub Actions annotations",
+          "type": "string"
+        },
+        {
+          "const": "checkstyle",
+          "description": "Checkstyle XML, for reviewdog, Jenkins and other CI tools",
+          "type": "string"
+        }
+      ]
+    },
+    "OverrideTable": {
+      "additionalProperties": false,
+      "description": "One `[[overrides]]` entry: settings for some files only.",
+      "properties": {
+        "accept": {
+          "default": [],
+          "description": "Matches no rule reports in these files.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "paths": {
+          "description": "Gitignore patterns for the files this applies to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rule": {
+          "additionalProperties": {
+            "$ref": "#/definitions/RuleTable"
+          },
+          "description": "Rule settings for these files.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "type": "object"
+    },
+    "RuleTable": {
+      "additionalProperties": false,
+      "description": "Settings for one rule.",
+      "properties": {
+        "accept": {
+          "default": [],
+          "description": "Its matches not to report, compared whole and in any case.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "level": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Setting"
+            }
+          ],
+          "description": "Its level, or `off`."
+        }
+      },
+      "type": "object"
+    },
+    "Setting": {
+      "description": "A rule's level, or `off`.",
+      "enum": [
+        "off",
+        "hint",
+        "warning",
+        "error"
+      ],
+      "type": "string"
+    },
+    "Source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/SourceTable"
+        }
+      ],
+      "description": "`\"default\"` for the built-in rules, a directory of rule files, or `{ path, prefix }`. A project config's paths are relative to the project root; any other config's, to its directory."
+    },
+    "SourceTable": {
+      "additionalProperties": false,
+      "description": "A rule directory with an id prefix of its own.",
+      "properties": {
+        "path": {
+          "description": "The directory.",
+          "type": "string"
+        },
+        "prefix": {
+          "description": "The first part of its rules' ids. By default, the directory's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "A proserunner config file: the user's (`~/.config/proserunner/config.toml`), a project's (`.proserunner/config.toml`), or one given with `--config`. Each layers over the one before; `proserunner config` shows the result.",
+  "properties": {
+    "accept": {
+      "default": [],
+      "description": "Matches no rule reports, compared whole and in any case. Adds to the list below.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "check": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/CheckTable"
+        }
+      ],
+      "description": "Defaults for `proserunner check`."
+    },
+    "fail-on": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/Level"
+        }
+      ],
+      "description": "The least serious level that makes a run exit 1."
+    },
+    "formats": {
+      "additionalProperties": {
+        "enum": [
+          "markdown",
+          "mdx",
+          "org",
+          "text",
+          "html",
+          "asciidoc",
+          "typst"
+        ]
+      },
+      "default": {},
+      "description": "The format of files a path pattern matches, such as `\"*.qmd\" = \"markdown\"`, for files whose extension says nothing or the wrong thing. Adds to the rows below; the last row that matches a file wins.",
+      "type": "object"
+    },
+    "inherit": {
+      "description": "`false` leaves out the configs below this one, and their ignore lists.",
+      "type": "boolean"
+    },
+    "mask": {
+      "default": [],
+      "description": "Regular expressions for text no rule should see, such as template syntax. Adds to the list below.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "overrides": {
+      "description": "Settings for the files that match `paths`. They apply in order, so a later one wins.",
+      "items": {
+        "$ref": "#/definitions/OverrideTable"
+      },
+      "type": "array"
+    },
+    "rule": {
+      "additionalProperties": {
+        "$ref": "#/definitions/RuleTable"
+      },
+      "description": "Settings for one rule, by id: `[rule.\"default/hedging\"]`.",
+      "type": "object"
+    },
+    "rules": {
+      "description": "Where rules come from: `\"default\"` for the built-in rules, or directories of rule files. Replaces the list below.",
+      "items": {
+        "$ref": "#/definitions/Source"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "const": 1,
+      "description": "The format version: 1.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "title": "proserunner config",
+  "type": "object"
+}

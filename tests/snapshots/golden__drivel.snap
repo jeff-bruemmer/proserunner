@@ -1,0 +1,21 @@
+---
+source: tests/golden.rs
+expression: "plain(&[\"resources/drivel.md\", \"resources/more/words.md\"])"
+---
+resources/drivel.md:3:14: [1] "quick as lightning" -> A tired phrase.
+resources/drivel.md:7:16: [2] "software program" -> Pleonastic phrase.
+resources/drivel.md:11:50: [3] "hopefully" -> Skunked term: consider rephrasing.
+resources/drivel.md:18:9: [4] "Female booksalesman" -> Sexist or ridiculous term.
+resources/drivel.md:22:14: [5] "FIX THIS" -> Draft litter.
+resources/more/words.md:3:10: [6] "I would argue" -> Omit this phrase.
+resources/more/words.md:3:58: [7] "so to speak" -> Omit this phrase.
+resources/more/words.md:5:12: [8] "Squelch" -> Prefer: quell.
+resources/more/words.md:7:11: [9] "Perchance" -> Modernize.
+resources/more/words.md:9:32: [10] "abolishment" -> Prefer: abolition.
+resources/more/words.md:9:70: [11] "ironical" -> Prefer: ironic.
+resources/more/words.md:11:21: [12] "the the" -> Consecutive word repetition.
+resources/more/words.md:11:114: [13] "punctuation punctuation" -> Consecutive word repetition.
+resources/more/words.md:13:18: [14] "intense apathy" -> Oxymoron.
+resources/more/words.md:15:30: [15] "zero sum game" -> Prefer: zero-sum game.
+resources/more/words.md:17:9: [16] "Per your request" -> Jargon.
+resources/more/words.md:19:37: [17] "no brainer" -> Avoid corporate-speak.

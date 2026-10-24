@@ -1,0 +1,44 @@
+#+TITLE: Test document
+#+AUTHOR: Utilize Synergy
+#+TODO: TODO NEXT | DONE
+
+* TODO Clichés                                                  :draft:
+cliche: I am /quick as lightning/.
+
+There is an innocent line, and =utilize()= is code.
+
+* DONE [#B] Redundancy [1/2]
+:PROPERTIES:
+:CUSTOM_ID: utilize
+:END:
+SCHEDULED: <2026-10-21 Wed>
+
+redundancy: Is *software program* redundant?
+
+- skunked-term: this item has a skunked term,
+  hopefully.
+- [X] annotations: FIX THIS.
+- See [[https://example.com/utilize][the guide]] or [[https://example.com/synergy]].
+
+#+BEGIN_SRC python
+error = "It has an error error."
+#+END_SRC
+
+#+BEGIN_QUOTE
+sexism: Female booksalesman is a sexist and ridiculous term.
+#+END_QUOTE
+
+| term    | note                 |
+|---------+----------------------|
+| synergy | corporate-speak cell |
+
+# proserunner-disable-next-line default/repetition
+The the inline control skips this line.
+
+* COMMENT Drafts
+We utilize synergy here, but the subtree is commented out.
+
+* NEXT Repetition
+This is is repeated, and leverage is jargon.[fn:1]
+
+[fn:1] A footnote that should utilize no jargon.

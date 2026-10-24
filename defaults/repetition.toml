@@ -1,0 +1,8 @@
+schema = 1
+name = "Repetition"
+message = "Consecutive word repetition."
+explain = "Catches consecutive repetition of words, like _the the_."
+repeat = true
+
+[examples]
+bad = ["This is is a test."]

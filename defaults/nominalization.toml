@@ -1,0 +1,34 @@
+schema = 1
+name = "Nominalization"
+explain = "Convert weak noun phrases back to strong verbs."
+
+words = [
+    { match = "make a decision", suggest = ["decide"] },
+    { match = "have a discussion", suggest = ["discuss"] },
+    { match = "provide assistance", suggest = ["assist"] },
+    { match = "give consideration to", suggest = ["consider"] },
+    { match = "make an assumption", suggest = ["assume"] },
+    { match = "reach a conclusion", suggest = ["conclude"] },
+    { match = "make a suggestion", suggest = ["suggest"] },
+    { match = "offer a recommendation", suggest = ["recommend"] },
+    { match = "give an explanation", suggest = ["explain"] },
+    { match = "make a determination", suggest = ["determine"] },
+    { match = "make an observation", suggest = ["observe"] },
+    { match = "make a payment", suggest = ["pay"] },
+    { match = "have an expectation", suggest = ["expect"] },
+    { match = "make an improvement", suggest = ["improve"] },
+    { match = "give approval", suggest = ["approve"] },
+    { match = "make a contribution", suggest = ["contribute"] },
+    { match = "provide clarification", suggest = ["clarify"] },
+    { match = "make a distinction", suggest = ["distinguish"] },
+    { match = "give authorization", suggest = ["authorize"] },
+    { match = "reach an agreement", suggest = ["agree"] },
+    { match = "make an argument", suggest = ["argue"] },
+    { match = "make a comparison", suggest = ["compare"] },
+    { match = "give recognition", suggest = ["recognize"] },
+    { match = "make an adjustment", suggest = ["adjust"] },
+]
+
+[examples]
+bad = ["Example: make a decision."]
+fix = [["Example: make a decision.", "Example: decide."]]

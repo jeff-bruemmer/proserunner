@@ -1,0 +1,31 @@
+schema = 1
+name = "Meta discourse"
+message = "Unnecessary signposting."
+explain = "Self-referential phrases that add no value."
+
+words = [
+    "it should be noted that",
+    "it is worth mentioning",
+    "as previously stated",
+    "as mentioned above",
+    "as noted earlier",
+    "it is interesting to note",
+    "the fact of the matter is",
+    "the point I'm trying to make",
+    "what I mean to say is",
+    "let me be clear",
+    "to be perfectly honest",
+    "if I may say so",
+    "as I said before",
+    "I would like to point out",
+    "allow me to explain",
+    "it bears mentioning",
+    "it is worth noting",
+    "it must be said",
+    "it cannot be denied",
+    "it goes without saying",
+    "needless to say",
+]
+
+[examples]
+bad = ["Example: it should be noted that."]

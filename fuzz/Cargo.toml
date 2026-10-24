@@ -1,0 +1,38 @@
+[package]
+name = "proserunner-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+roxmltree = "0.21"
+proserunner = { path = ".." }
+
+# Not part of the parent package.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "scan"
+path = "fuzz_targets/scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rules"
+path = "fuzz_targets/rules.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "edn"
+path = "fuzz_targets/edn.rs"
+test = false
+doc = false
+bench = false

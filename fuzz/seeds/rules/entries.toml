@@ -1,0 +1,15 @@
+schema = 1
+message = "Write “{suggestion}”, not “{match}”."
+case = "sensitive"
+except = ["GitHub Pages", { pattern = 'mac ?os 9' }]
+terms = ["GitHub", { term = "macOS", match = ["mac os{, x}"], level = "error" }, "Ångström"]
+words = [{ match = "utilize", suggest = ["use"], case = "insensitive", level = "hint" }]
+patterns = [
+    { match = '(\d+) ?per ?cent', suggest = ["{1}%"] },
+    { match = '(?<year>\d{4})s(?= era)', suggest = ["{year}s"], message = "{1} or {year}" },
+]
+
+[examples]
+bad = ["On Github, 5 per cent."]
+good = ["On GitHub, at github.com."]
+fix = [["GITHUB is 5 per cent off.", "GitHub is 5% off."]]

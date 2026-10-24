@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Fail when a whole run on a 2 KB file takes longer than the target.
+
+Usage: check-speed [--proserunner BIN] [--max-ms MS] [--runs N]
+
+Times a cold run, process start to exit, on the first 2 KB of
+resources/benchmark-data/medium.md with hyperfine, in a throwaway home.
+The target is 10 ms; CI machines are slower than desks, so the budget is
+the target, not what a fast machine does.
+"""
+
+import argparse
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def sample(path, size=2048):
+    """The first `size` bytes of `path`, ending at a line break."""
+    text = path.read_text()
+    cut = text.rfind("\n", 0, size)
+    return text[: cut + 1 if cut > 0 else size]
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--proserunner", default=str(ROOT / "target" / "release" / "proserunner"))
+    p.add_argument("--max-ms", type=float, default=10.0)
+    p.add_argument("--runs", type=int, default=50)
+    args = p.parse_args()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        doc = tmp / "sample.md"
+        doc.write_text(sample(ROOT / "resources" / "benchmark-data" / "medium.md"))
+        home = tmp / "home"
+        env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+        report = tmp / "report.json"
+        subprocess.run(
+            ["hyperfine", "-N", "-i", "--warmup", "5", "--runs", str(args.runs),
+             "--export-json", str(report), f"{args.proserunner} {doc} -o plain -q"],
+            check=True, env=env, stdout=subprocess.DEVNULL,
+        )
+        result = json.loads(report.read_text())["results"][0]
+        median_ms = result["median"] * 1000
+        print(f"2 KB cold run: median {median_ms:.2f} ms (budget {args.max_ms:.0f} ms)")
+        if median_ms > args.max_ms:
+            sys.exit(f"too slow: {median_ms:.2f} ms > {args.max_ms:.0f} ms")
+
+
+if __name__ == "__main__":
+    main()

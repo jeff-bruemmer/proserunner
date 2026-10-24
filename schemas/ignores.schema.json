@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "Entry": {
+      "additionalProperties": false,
+      "description": "One `[[issue]]`: a match not to report in one file.",
+      "properties": {
+        "file": {
+          "description": "The file: relative to the project root in a project's list, and to the working directory in the global one.",
+          "type": "string"
+        },
+        "line": {
+          "description": "Only on this line.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "match": {
+          "description": "The match, compared whole and in any case.",
+          "type": "string"
+        },
+        "rule": {
+          "description": "The rule's id. Without one, the match is ignored for every rule.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "match"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "A proserunner ignore list, written by `proserunner ignore` and `--ignore-issues`.",
+  "properties": {
+    "accept": {
+      "default": [],
+      "description": "Matches never reported, compared whole and in any case.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "issue": {
+      "description": "Matches not reported in one file.",
+      "items": {
+        "$ref": "#/definitions/Entry"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "const": 1,
+      "description": "The format version: 1.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "title": "proserunner ignore list",
+  "type": "object"
+}

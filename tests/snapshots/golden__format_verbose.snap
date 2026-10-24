@@ -1,0 +1,79 @@
+---
+source: tests/golden.rs
+expression: "output(&[\"resources/drivel.md\"], format)"
+---
+# Proserunner results
+
+5 issues in 1 file.
+
+## 1. Clichés (`default/cliches`)
+
+`[ROOT]/resources/drivel.md:3:14` · warning
+
+> cliche: I am quick as lightning.
+
+**Problem:** `quick as lightning`: A tired phrase.
+
+**Why:** An overused phrase or opinion that betrays a lack of original thought.
+
+---
+
+## 2. Redundancies (`default/redundancies`)
+
+`[ROOT]/resources/drivel.md:7:16` · warning
+
+> redundancy: Is software program redundant?
+
+**Problem:** `software program`: Pleonastic phrase.
+
+**Why:** Avoid phrases that say the same thing more than once.
+
+---
+
+## 3. Skunked terms (`default/skunked-terms`)
+
+`[ROOT]/resources/drivel.md:11:50` · warning
+
+> skunked-term: This paragraph has a skunked term, hopefully.
+
+**Problem:** `hopefully`: Skunked term: consider rephrasing.
+
+**Why:** Words with controversial correct usage that are best avoided.
+
+---
+
+## 4. Sexism (`default/sexism`)
+
+`[ROOT]/resources/drivel.md:18:9` · warning
+
+> sexism: Female booksalesman is a sexist and ridiculous term.
+
+**Problem:** `Female booksalesman`: Sexist or ridiculous term.
+
+**Why:** Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_).
+
+---
+
+## 5. Annotations (`default/annotations`)
+
+`[ROOT]/resources/drivel.md:22:14` · warning
+
+> annotations: FIX THIS.
+
+**Problem:** `FIX THIS`: Draft litter.
+
+**Why:** Typical markers used to signal problem sites in the text.
+
+---
+
+## Summary
+
+- **Issues:** 5
+- **By rule:**
+  - Annotations (`default/annotations`): 1
+  - Clichés (`default/cliches`): 1
+  - Redundancies (`default/redundancies`): 1
+  - Sexism (`default/sexism`): 1
+  - Skunked terms (`default/skunked-terms`): 1
+- **By file:**
+  - `resources/drivel.md`: 5 issues

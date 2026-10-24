@@ -1,0 +1,58 @@
+schema = 1
+name = "Archaisms"
+message = "Modernize."
+explain = "Outmoded word or phrase."
+
+words = [
+    "alack",
+    "anent",
+    "anon",
+    "begat",
+    "belike",
+    "betimes",
+    "boughten",
+    "brocage",
+    "brokage",
+    "camarade",
+    "chiefer",
+    "chiefest",
+    "Christiana",
+    "completely obsolescent",
+    "cozen",
+    "divers",
+    "deflexion",
+    "durst",
+    "fain",
+    "forsooth",
+    "foreclose from",
+    "haply",
+    "howbeit",
+    "illumine",
+    "in sooth",
+    "maugre",
+    "meseems",
+    "methinks",
+    "nigh",
+    "peradventure",
+    "perchance",
+    "saith",
+    "shew",
+    "sistren",
+    "spake",
+    "to wit",
+    "verily",
+    "whilom",
+    "withal",
+    "wot",
+    "enclosed please find",
+    "please find enclosed",
+    "enclosed herewith",
+    "enclosed herein",
+    "inforce",
+    "ex postfacto",
+    "forewent",
+    "for ever",
+]
+
+[examples]
+bad = ["Example: alack."]

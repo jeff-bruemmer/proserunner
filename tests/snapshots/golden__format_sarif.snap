@@ -1,0 +1,243 @@
+---
+source: tests/golden.rs
+expression: "output(&[\"resources/drivel.md\"], format)"
+---
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "proserunner",
+          "semanticVersion": "1.0.0-alpha.1",
+          "informationUri": "https://github.com/jeff-bruemmer/proserunner",
+          "rules": [
+            {
+              "id": "default/annotations",
+              "name": "Annotations",
+              "shortDescription": {
+                "text": "Annotations"
+              },
+              "fullDescription": {
+                "text": "Typical markers used to signal problem sites in the text."
+              },
+              "help": {
+                "text": "Typical markers used to signal problem sites in the text."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "default/cliches",
+              "name": "Clichés",
+              "shortDescription": {
+                "text": "Clichés"
+              },
+              "fullDescription": {
+                "text": "An overused phrase or opinion that betrays a lack of original thought."
+              },
+              "help": {
+                "text": "An overused phrase or opinion that betrays a lack of original thought."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "default/redundancies",
+              "name": "Redundancies",
+              "shortDescription": {
+                "text": "Redundancies"
+              },
+              "fullDescription": {
+                "text": "Avoid phrases that say the same thing more than once."
+              },
+              "help": {
+                "text": "Avoid phrases that say the same thing more than once."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "default/sexism",
+              "name": "Sexism",
+              "shortDescription": {
+                "text": "Sexism"
+              },
+              "fullDescription": {
+                "text": "Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_)."
+              },
+              "help": {
+                "text": "Sexist or ridiculous terms (like _mail person_ instead of _mail carrier_)."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "default/skunked-terms",
+              "name": "Skunked terms",
+              "shortDescription": {
+                "text": "Skunked terms"
+              },
+              "fullDescription": {
+                "text": "Words with controversial correct usage that are best avoided."
+              },
+              "help": {
+                "text": "Words with controversial correct usage that are best avoided."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            }
+          ]
+        }
+      },
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file://[ROOT]/"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "default/cliches",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "A tired phrase."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/drivel.md",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3,
+                  "startColumn": 14,
+                  "endLine": 3,
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "quick as lightning"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "default/redundancies",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "Pleonastic phrase."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/drivel.md",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 16,
+                  "endLine": 7,
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "software program"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "default/skunked-terms",
+          "ruleIndex": 4,
+          "level": "warning",
+          "message": {
+            "text": "Skunked term: consider rephrasing."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/drivel.md",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 11,
+                  "startColumn": 50,
+                  "endLine": 11,
+                  "endColumn": 59,
+                  "snippet": {
+                    "text": "hopefully"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "default/sexism",
+          "ruleIndex": 3,
+          "level": "warning",
+          "message": {
+            "text": "Sexist or ridiculous term."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/drivel.md",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 18,
+                  "startColumn": 9,
+                  "endLine": 18,
+                  "endColumn": 28,
+                  "snippet": {
+                    "text": "Female booksalesman"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "default/annotations",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "Draft litter."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "resources/drivel.md",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 14,
+                  "endLine": 22,
+                  "endColumn": 22,
+                  "snippet": {
+                    "text": "FIX THIS"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

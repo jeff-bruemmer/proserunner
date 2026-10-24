@@ -1,0 +1,69 @@
+[package]
+name = "proserunner"
+version = "1.0.0-alpha.1"
+edition = "2024"
+rust-version = "1.92"
+description = "Fast, customizable prose linter"
+license = "MIT"
+repository = "https://github.com/jeff-bruemmer/proserunner"
+readme = "README.md"
+keywords = ["prose", "linter", "writing", "markdown", "style"]
+categories = ["command-line-utilities", "text-processing"]
+include = ["/src", "/defaults", "/build.rs", "/README.md", "/LICENSE.txt", "/CHANGELOG.md"]
+
+[dependencies]
+aho-corasick = "1.1"
+clap = { version = "4.6", features = ["derive"] }
+fancy-regex = "0.19"
+globset = "0.4"
+html5gum = "0.8.4"
+asciidoc-parser = "0.31.2"
+orgize = "=0.10.0-alpha.10"
+typst-syntax = "0.15.1"
+ignore = "0.4"
+markdown = "1.0.0"
+pulldown-cmark = { version = "0.13", default-features = false }
+rayon = "1.12"
+regex = "1.13"
+regex-syntax = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = { version = "1.1", features = ["preserve_order"] }
+toml_edit = "0.25"
+unicode-width = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2.2"
+criterion = { version = "0.5", default-features = false }
+insta = { version = "1.49", features = ["json"] }
+schemars = "1"
+tempfile = "3"
+
+[[bench]]
+name = "engine"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[lints.rust]
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+needless_for_each = "warn"
+format_push_string = "warn"
+implicit_clone = "warn"
+absolute_paths = "warn"
+wildcard_imports = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
