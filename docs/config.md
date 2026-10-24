@@ -70,7 +70,7 @@ rule."default/hedging".level = "error"
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `schema` | (required) | The format version: `1` |
-| `inherit` | `true` | `false` leaves out the layers below this one, and their ignore lists |
+| `inherit` | `true` | `false` leaves out the layers below this one, and their ignore lists; what this one extends stays |
 | `extends` | none | Configs this one builds on (see [Extends](#extends)) |
 | `rules` | `["default"]` | Where rules come from (see [Rules](rules.md#where-rules-come-from)) |
 | `fail-on` | `"warning"` | The least serious level that makes a run exit 1: `"hint"`, `"warning"` or `"error"` |
@@ -130,7 +130,8 @@ project, and into the user config outside one; `--global` and
 `--project` choose. It takes a rule's id, its name when only one rule
 has it, or `source/*`, and it writes the whole id. It keeps the file's
 comments and layout, and makes the file if there's none. When another
-layer's setting wins over the one it wrote, it says so.
+layer's setting wins over the one it wrote, it says so, and so does a
+`source/*` it wrote for each rule whose own level wins over it.
 
 ## How layers merge
 
@@ -143,7 +144,8 @@ Layers apply in order: built-in defaults, user, project, then `--config`.
   order, so a project's come after the user config's.
 - **`inherit = false`** in a project config leaves out the user config
   and the global ignore list. In a `--config` file, it leaves out both
-  the user and the project config, and every ignore list.
+  the user and the project config, and every ignore list. The configs
+  the file itself extends still apply.
 - **`extends`:** each config a layer extends is a layer just below it,
   and `rules` add up within them (see [Extends](#extends)).
 
@@ -190,7 +192,9 @@ level = "off"
   files: a git submodule, or a checkout next to your projects.
 - **Once:** a config extended twice, as when a project and its team's
   style both extend one base, is read once, below everything that
-  extends it.
+  extends it. The user config and a project config can extend the same
+  one, such as a house style. It's then below each, so in the project,
+  its settings win over the user config's.
 - **Mistakes:** a missing file, a config that extends itself through
   another, and `inherit` in an extended config are errors. `inherit`
   decides which layers apply, so it goes in a config named on its own.
@@ -295,12 +299,15 @@ $ proserunner document.md --no-ignores            # A run without ignores
 - **Which numbers:** `--ignore-issues` takes the numbers the last run of
   the same paths, from the same directory, showed. So fixing an issue
   before ignoring others doesn't make the numbers name different issues.
-  It lists each issue it ignores, skips one that's gone since, and then
-  shows what's left, renumbered, with the exit status of a check. After a
-  run of other paths, the numbers are the current run's. The last run's
-  numbers are kept in `~/.cache/proserunner/` (or
-  `$XDG_CACHE_HOME/proserunner/`); a run that can't write there still
-  succeeds.
+  It lists each issue it ignores, skips one that's gone since or whose
+  rule `--rule` leaves out, and then
+  shows what's left, renumbered, with the exit status of a check. A run
+  of other paths, such as a commit hook's, doesn't change them: the 20
+  most recent runs are kept, each by its directory and paths. With none
+  kept for these paths, the numbers are the current run's, and it says
+  so. Runs are kept in `~/.cache/proserunner/runs/` (or
+  `$XDG_CACHE_HOME/proserunner/runs/`); a run that can't write there
+  still succeeds.
 - **Matching:** words are compared like `accept`: whole matches, any
   case.
 - **Comments:** proserunner keeps the comments you add to an

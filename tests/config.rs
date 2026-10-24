@@ -409,9 +409,11 @@ fn ignore_issues_by_number_and_all() {
         "dirty.md:1:4: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
          dirty.md:3:11: [2] \"due to the fact that\" -> Prefer: because, since, why. (default/compression)\n"
     );
+    // No run came first, so the numbers are this one's.
     assert_eq!(
         r.stderr,
-        "Ignored 2 issues in the project ignore list (.proserunner/ignores.toml), each wherever its match is in its file:\n  \
+        "No earlier run of these paths from here was kept, so the numbers are this run's.\n\
+         Ignored 2 issues in the project ignore list (.proserunner/ignores.toml), each wherever its match is in its file:\n  \
          [2] \"synergy\" in dirty.md (default/corporate-speak)\n  \
          [4] \"per your request\" in dirty.md (default/jargon)\n"
     );
@@ -491,13 +493,52 @@ fn ignore_issues_takes_the_numbers_the_last_run_showed() {
          No issues to ignore.\nChecked 1 file and found no issues.\n"
     );
 
-    // After a run of other paths, numbers are this run's.
-    env.write("dirty.md", DIRTY);
-    env.write("other.md", "We utilize synergy.\n");
+    // A run of other paths, such as a commit hook's, keeps these numbers.
+    env.write("mine.md", "We utilize synergy.\n");
+    run(env.cmd().arg("mine.md"));
+    env.write("other.md", "We utilize it.\n");
     run(env.cmd().arg("other.md"));
-    let r = run(env.cmd().args(["dirty.md", "--ignore-issues", "1"]));
+    env.write("mine.md", "We use synergy.\n");
+    let r = run(env.cmd().args(["mine.md", "--ignore-issues", "2"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
     assert!(
-        r.stderr.contains("[1] \"utilize\" in dirty.md"),
+        r.stderr.contains("[2] \"synergy\" in mine.md"),
+        "{}",
+        r.stderr
+    );
+
+    // With no run of these paths kept, the numbers are this run's, and it
+    // says so.
+    env.write("new.md", "We utilize it.\n");
+    let r = run(env.cmd().args(["new.md", "--ignore-issues", "1"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(
+        r.stderr.starts_with(
+            "No earlier run of these paths from here was kept, so the numbers are this run's.\n"
+        ),
+        "{}",
+        r.stderr
+    );
+    assert!(
+        r.stderr.contains("[1] \"utilize\" in new.md"),
+        "{}",
+        r.stderr
+    );
+
+    // An issue of a rule `--rule` leaves out isn't one this run can find.
+    env.write("ruled.md", "We utilize synergy.\n");
+    run(env.cmd().arg("ruled.md"));
+    let r = run(env.cmd().args([
+        "ruled.md",
+        "--rule",
+        "needless-variants",
+        "--ignore-issues",
+        "2",
+    ]));
+    assert!(
+        r.stderr.starts_with(
+            "[2] \"synergy\" in ruled.md (default/corporate-speak) isn't ignored: --rule leaves its rule out of this run.\n"
+        ),
         "{}",
         r.stderr
     );
@@ -783,7 +824,7 @@ fn b4_a_check_with_no_config_writes_only_its_cache() {
     assert_eq!(run(env.cmd().arg("dirty.md")).code, 1);
     assert_eq!(run(env.cmd().arg("rules")).code, 0);
     let mut after = files(env.root());
-    after.retain(|f| f != "home/.cache/proserunner/last-run.json");
+    after.retain(|f| !f.starts_with("home/.cache/proserunner/runs/"));
     assert_eq!(after, before);
 }
 
@@ -1193,6 +1234,15 @@ fn rules_set_says_when_another_layer_wins() {
     let user = env.read(&format!("{}/config.toml", Env::CONFIG));
     assert!(user.contains("\nschema = 1\n"), "{user}");
 
+    // A rule's own level wins over its source's pattern.
+    let r = run(env.cmd().args(["rules", "set", "default/*", "hint"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Set default/* to hint in .proserunner/config.toml.\n\
+         proserunner: .proserunner/config.toml sets default/jargon to error, and its own level wins over default/*\n"
+    );
+
     env.write(".proserunner/config.toml", "schema = 1\ninherit = false\n");
     let r = run(env
         .cmd()
@@ -1260,6 +1310,52 @@ fn extends_builds_on_shared_configs() {
         ),
         "{shown}"
     );
+}
+
+/// A base that the user config and a project both extend is in each, so
+/// the project keeps its rules, and its settings win over the user's
+/// there. `inherit = false` leaves out the user config, not what the
+/// project extends.
+#[test]
+fn extends_hold_with_a_shared_base_and_inherit_false() {
+    let env = Env::new();
+    env.write(
+        "house/config.toml",
+        "schema = 1\nrules = [\"default\", { path = \"rules\", prefix = \"house\" }]\n\
+         accept = [\"Kubernetes\"]\n[rule.\"default/corporate-speak\"]\nlevel = \"error\"\n",
+    );
+    env.write(
+        "house/rules/widgets.toml",
+        "schema = 1\nmessage = \"Say gadget.\"\nwords = [\"widget\"]\n",
+    );
+    env.write(
+        &format!("{}/config.toml", Env::CONFIG),
+        "schema = 1\nextends = [\"../../../house/config.toml\"]\n\
+         [rule.\"default/corporate-speak\"]\nlevel = \"off\"\n",
+    );
+    env.write("doc.md", "The widget has synergy.\n");
+    let project = "schema = 1\nextends = [\"house/config.toml\"]\nrules = [\"default\"]\n";
+    for (config, merged) in [
+        (
+            project.to_owned(),
+            "# Merged from: house/config.toml, ~/.config/proserunner/config.toml, .proserunner/config.toml\n",
+        ),
+        (
+            format!("{project}inherit = false\n"),
+            "# Merged from: house/config.toml, .proserunner/config.toml\n",
+        ),
+    ] {
+        env.write(".proserunner/config.toml", &config);
+        assert_eq!(
+            rules_found(&env, &["doc.md"]),
+            ["house/widgets", "default/corporate-speak"],
+            "{config}"
+        );
+        let shown = run(env.cmd().arg("config")).stdout;
+        assert!(shown.starts_with(merged), "{shown}");
+        // What house adds to a list, it adds once.
+        assert_eq!(shown.matches("\"Kubernetes\"").count(), 1, "{shown}");
+    }
 }
 
 #[test]

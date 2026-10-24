@@ -233,7 +233,7 @@
       "type": "object"
     },
     "inherit": {
-      "description": "`false` leaves out the configs below this one, and their ignore lists.",
+      "description": "`false` leaves out the configs below this one, and their ignore lists. The configs this one extends stay.",
       "type": "boolean"
     },
     "mask": {

@@ -149,7 +149,7 @@ work as before, as do `init`, `--ignore-issues`, `--ignore-all`,
 | 0.8 | 1.0 |
 | --- | --- |
 | `XDG_CONFIG_HOME` | Same |
-| `XDG_CACHE_HOME` | Where the last run's issue numbers are kept, for `--ignore-issues`; nothing else is cached |
+| `XDG_CACHE_HOME` | Where recent runs' issue numbers are kept, for `--ignore-issues`; nothing else is cached |
 | `PROSERUNNER_CACHE_DIR`, `TMPDIR` | Gone |
 | | New: `NO_COLOR` and `CLICOLOR_FORCE`, for color in a terminal |
 | `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Gone: proserunner never uses the network |

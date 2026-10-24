@@ -132,7 +132,12 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
     if ignoring {
         let report = report::build(&setup.rules, &documents);
         let last = numbers.as_ref().and_then(|_| last_run::load(ctx, &key));
-        let ignored = ignore_reported(ctx, &setup, args.scope, &report, numbers.as_deref(), last)?;
+        let chosen = Chosen {
+            numbers: numbers.as_deref(),
+            last,
+            only: only.as_ref(),
+        };
+        let ignored = ignore_reported(ctx, &setup, args.scope, &report, chosen)?;
         drop(report);
         drop_ignored(&setup.rules, &mut documents, &ignored);
     }
@@ -483,39 +488,63 @@ fn exhausted_warnings(
     warnings
 }
 
+/// Which issues `--ignore-issues` and `--ignore-all` ignore.
+struct Chosen<'run> {
+    /// `--ignore-issues`' numbers; `None` for `--ignore-all`.
+    numbers: Option<&'run [RangeInclusive<usize>]>,
+    /// The issues the last run of these paths numbered, if one was kept.
+    last: Option<Vec<Shown>>,
+    /// The rules `--rule` keeps, if it was given.
+    only: Option<&'run HashSet<RuleIndex>>,
+}
+
 /// `--ignore-issues` and `--ignore-all`: adds the chosen issues to an
 /// ignore list, and returns them. `--ignore-issues` takes the numbers of
-/// the last run of these paths when one was kept (`last`), so they name
-/// what that run showed, even after the files changed; otherwise, this
-/// run's.
+/// the last run of these paths when one was kept, so they name what that
+/// run showed, even after the files changed; otherwise, this run's.
 fn ignore_reported(
     ctx: &Ctx,
     setup: &Setup,
     scope: ScopeArgs,
     report: &Report<'_>,
-    numbers: Option<&[RangeInclusive<usize>]>,
-    last: Option<Vec<Shown>>,
+    chosen: Chosen<'_>,
 ) -> Result<Vec<Shown>> {
     let current = last_run::shown(report);
+    let numbers = chosen.numbers;
     let chosen = match numbers {
         None => current,
         Some(numbers) => {
-            let (numbered, run) = match last {
+            let (numbered, run) = match chosen.last {
                 Some(last) => (last, "the last run"),
-                None => (current.clone(), "this run"),
+                None => {
+                    console::status(
+                        ctx,
+                        "No earlier run of these paths from here was kept, so the numbers are this run's.",
+                    );
+                    (current.clone(), "this run")
+                }
             };
             in_range(numbers, numbered.len(), run)?;
             let picked = numbered
                 .into_iter()
                 .filter(|s| numbers.iter().any(|r| r.contains(&s.number)));
-            // An issue the last run showed may be gone: fixed since.
-            let (here, gone): (Vec<Shown>, Vec<Shown>) =
+            // An issue the last run showed may be gone: fixed since. Or
+            // `--rule` may leave out its rule, so this run can't tell.
+            let kept: Option<HashSet<&str>> = chosen.only.map(|only| {
+                only.iter()
+                    .filter_map(|&rule| setup.rules.get(rule))
+                    .map(|rule| rule.id.as_str())
+                    .collect()
+            });
+            let (here, missing): (Vec<Shown>, Vec<Shown>) =
                 picked.partition(|s| current.iter().any(|c| same_issue(c, s)));
-            for s in &gone {
-                console::status(
-                    ctx,
-                    &format!("[{}] {} isn't there any more.", s.number, described(s)),
-                );
+            for s in &missing {
+                let why = if kept.as_ref().is_some_and(|k| !k.contains(s.rule.as_str())) {
+                    "isn't ignored: --rule leaves its rule out of this run"
+                } else {
+                    "isn't there any more"
+                };
+                console::status(ctx, &format!("[{}] {} {why}.", s.number, described(s)));
             }
             here
         }

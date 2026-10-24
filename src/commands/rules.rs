@@ -123,6 +123,18 @@ fn set(
             "config here sets `inherit = false`, which leaves {path} out"
         )),
     }
+    // A rule's own level wins over its source's pattern, in any file.
+    if let Some(source) = config::pattern_source(&id) {
+        for rule in setup.rules.find_source(source).unwrap_or_default() {
+            let own = config.rule.get(&rule.id).and_then(|s| s.level.as_ref());
+            if let Some(own) = own.filter(|own| own.value != level) {
+                console::warn(&format!(
+                    "{} sets {} to {}, and its own level wins over {id}",
+                    own.origin, rule.id, own.value
+                ));
+            }
+        }
+    }
     Ok(EXIT_OK)
 }
 

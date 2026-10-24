@@ -8,7 +8,8 @@
 //! `accept`, `mask` and `exclude`, which append, and `rules` within one
 //! layer and what it extends, which append too; `[formats]` rows and
 //! `[[overrides]]` append and apply in order. `inherit = false` drops
-//! every layer below the one that says it, unread.
+//! every layer below the one that says it, unread, except the configs
+//! that one extends.
 //!
 //! Paths are relative to the layer's base: the project root for a project
 //! config, otherwise the directory that holds the file. `~/` is the home
@@ -21,7 +22,7 @@
 
 #[cfg(test)]
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display, Formatter, Write as _};
 use std::fs;
 use std::io::ErrorKind;
@@ -75,7 +76,7 @@ pub struct ConfigFile {
     #[cfg_attr(test, schemars(extend("const" = 1)))]
     pub schema: u32,
     /// `false` leaves out the configs below this one, and their ignore
-    /// lists.
+    /// lists. The configs this one extends stay.
     pub inherit: Option<bool>,
     /// Configs this one builds on, such as a team's shared style. Each is
     /// a layer just below this one, in order, so this file's settings win
@@ -731,17 +732,20 @@ impl Reading<'_> {
         Ok(())
     }
 
-    /// The layers, lowest first. A config extended more than once stays
-    /// only at its lowest place, below everything that extends it.
+    /// The layers, lowest first. A config extended more than once in a
+    /// group stays only at its lowest place there, below everything that
+    /// extends it. Groups don't share one: when the user config and a
+    /// project both extend it, it's in each, so each keeps its `rules`.
     fn lowest_first(self) -> Vec<Layer> {
-        let mut seen: Vec<PathBuf> = Vec::new();
+        let mut seen: Vec<(usize, PathBuf)> = Vec::new();
         let mut out = Vec::new();
         for (layer, canonical) in self.layers.into_iter().rev() {
             if layer.kind == LayerKind::Extended {
-                if seen.contains(&canonical) {
+                let place = (layer.group, canonical);
+                if seen.contains(&place) {
                     continue;
                 }
-                seen.push(canonical);
+                seen.push(place);
             }
             out.push(layer);
         }
@@ -750,16 +754,28 @@ impl Reading<'_> {
 }
 
 /// Merges layers, lowest first, over the built-in defaults. The error
-/// names every mistake in every layer.
+/// names every mistake in every layer. A config named on its own with
+/// `inherit = false` drops the layers below it, but not the configs it
+/// extends: its group starts afresh, below them.
 pub fn merge(ctx: &Ctx, layers: Vec<Layer>) -> Result<Config> {
+    // The groups whose config named on its own says `inherit = false`,
+    // with that config's kind.
+    let afresh: HashMap<usize, LayerKind> = layers
+        .iter()
+        .filter(|l| l.kind != LayerKind::Extended && l.file.inherit == Some(false))
+        .map(|l| (l.group, l.kind))
+        .collect();
     let mut config = Config::default();
     let mut errors = Vec::new();
+    let mut group = None;
     // The group of the layer that last set `rules`.
     let mut rules_group = None;
     for layer in layers {
-        if layer.file.inherit == Some(false) {
+        let starts_group = group != Some(layer.group);
+        group = Some(layer.group);
+        if let Some(&kind) = afresh.get(&layer.group).filter(|_| starts_group) {
             let mut inherited = config.inherited;
-            match layer.kind {
+            match kind {
                 LayerKind::User | LayerKind::Extended => {}
                 LayerKind::Project => inherited.global = false,
                 LayerKind::Explicit => {
@@ -784,7 +800,9 @@ pub fn merge(ctx: &Ctx, layers: Vec<Layer>) -> Result<Config> {
 
 /// Applies `layer` over `config`, leaving out each value with a mistake,
 /// and returns the mistakes. `rules_group` is the group of the layer that
-/// last set `rules`: within a group, `rules` add up.
+/// last set `rules`: within a group, `rules` add up. A config that two
+/// groups extend is applied in each; the second time, what it adds to a
+/// list that only collects is there already, and isn't added again.
 fn apply(
     ctx: &Ctx,
     config: &mut Config,
@@ -794,7 +812,9 @@ fn apply(
     let origin = layer.origin.as_str();
     let mut problems = Problems::default();
     let f = layer.file;
-    config.files.push(origin.to_owned());
+    if !config.files.iter().any(|file| file == origin) {
+        config.files.push(origin.to_owned());
+    }
 
     if let Some(specs) = f.rules {
         let dirs: Result<Vec<RuleDir>, String> = specs
@@ -816,20 +836,21 @@ fn apply(
         config.fail_on = Sourced::new(level, origin);
     }
     if let Some(accept) = problems.keep(accepted(&f.accept)) {
-        config
-            .accept
-            .extend(accept.map(|a| Sourced::new(a, origin)));
+        for a in accept {
+            add_new(&mut config.accept, a, origin);
+        }
     }
     for m in f.mask {
         let valid = Regex::new(&m).map_err(|e| format!("invalid mask `{m}`: {e}"));
         if problems.keep(valid).is_some() {
-            config.mask.push(Sourced::new(m, origin));
+            add_new(&mut config.mask, m, origin);
         }
     }
     let exclude: Vec<Sourced<String>> = f
         .check
         .exclude
         .into_iter()
+        .filter(|p| !has(config.exclude.written(), p, origin))
         .map(|p| Sourced::new(p, origin))
         .collect();
     if let Some(exclude) = problems.keep(paths(ctx, &layer.base, layer.within.as_deref(), exclude))
@@ -845,6 +866,8 @@ fn apply(
     if let Some(v) = f.check.output {
         config.output = Sourced::new(v, origin);
     }
+    // Rows and overrides apply in order, the last that matches winning, so
+    // a config applied again adds them again, above what's between.
     for FormatPattern {
         pattern,
         format: name,
@@ -908,9 +931,22 @@ fn merge_rules(
         if let Some(level) = table.level {
             settings.level = Some(Sourced::new(level, origin));
         }
-        settings
-            .accept
-            .extend(accept.map(|a| Sourced::new(a, origin)));
+        for a in accept {
+            add_new(&mut settings.accept, a, origin);
+        }
+    }
+}
+
+/// Whether `list` has `value` from `origin`.
+fn has(list: &[Sourced<String>], value: &str, origin: &str) -> bool {
+    list.iter().any(|s| s.value == value && s.origin == origin)
+}
+
+/// Adds `value` from `origin` to `list`, unless that file added it
+/// already.
+fn add_new(list: &mut Vec<Sourced<String>>, value: String, origin: &str) {
+    if !has(list, &value, origin) {
+        list.push(Sourced::new(value, origin));
     }
 }
 
@@ -1478,6 +1514,23 @@ mod tests {
                 project: true
             }
         );
+    }
+
+    #[test]
+    fn inherit_false_keeps_the_configs_it_extends() {
+        let user = layer(LayerKind::User, "/u", "u", "schema = 1\naccept = [\"x\"]");
+        let project = layer(LayerKind::Project, "/p", "p", "schema = 1\ninherit = false");
+        let mut team = layer(
+            LayerKind::Extended,
+            "/t",
+            "t",
+            "schema = 1\naccept = [\"y\"]",
+        );
+        team.group = project.group;
+        let c = merge(&ctx(), vec![user, team, project]).unwrap();
+        let accept: Vec<&str> = c.accept.iter().map(|a| a.value.as_str()).collect();
+        assert_eq!(accept, ["y"]);
+        assert_eq!(c.files, ["t", "p"]);
     }
 
     #[test]
