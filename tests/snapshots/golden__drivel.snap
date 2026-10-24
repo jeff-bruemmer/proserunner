@@ -2,20 +2,20 @@
 source: tests/golden.rs
 expression: "plain(&[\"resources/drivel.md\", \"resources/more/words.md\"])"
 ---
-resources/drivel.md:3:14: [1] "quick as lightning" -> Cliché: say it in your own words.
-resources/drivel.md:7:16: [2] "software program" -> Redundant: “program” says it.
-resources/drivel.md:11:50: [3] "hopefully" -> Skunked term: rephrase to avoid it.
-resources/drivel.md:18:9: [4] "Female booksalesman" -> Gendered term: use a neutral one.
-resources/drivel.md:22:14: [5] "FIX THIS" -> Draft note: resolve it, then remove it.
-resources/more/words.md:3:10: [6] "I would argue" -> Omit this phrase.
-resources/more/words.md:3:58: [7] "so to speak" -> Omit this phrase.
-resources/more/words.md:5:12: [8] "Squelch" -> Prefer: quell.
-resources/more/words.md:7:11: [9] "Perchance" -> Archaic: use a current word.
-resources/more/words.md:9:32: [10] "abolishment" -> Prefer: abolition.
-resources/more/words.md:9:70: [11] "ironical" -> Prefer: ironic.
-resources/more/words.md:11:21: [12] "the the" -> Repeated word: delete one.
-resources/more/words.md:11:114: [13] "punctuation punctuation" -> Repeated word: delete one.
-resources/more/words.md:13:18: [14] "intense apathy" -> Oxymoron: the words cancel out; rephrase.
-resources/more/words.md:15:30: [15] "zero sum game" -> Prefer: zero-sum game.
-resources/more/words.md:17:9: [16] "Per your request" -> Jargon: say it plainly.
-resources/more/words.md:19:37: [17] "no brainer" -> Avoid corporate-speak.
+resources/drivel.md:3:14: [1] "quick as lightning" -> Cliché: say it in your own words. (default/cliches)
+resources/drivel.md:7:16: [2] "software program" -> Redundant: “program” says it. (default/redundancies)
+resources/drivel.md:11:50: [3] "hopefully" -> Skunked term: rephrase to avoid it. (default/skunked-terms)
+resources/drivel.md:18:9: [4] "Female booksalesman" -> Gendered term: use a neutral one. (default/sexism)
+resources/drivel.md:22:14: [5] "FIX THIS" -> Draft note: resolve it, then remove it. (default/annotations)
+resources/more/words.md:3:10: [6] "I would argue" -> Omit this phrase. (default/hedging)
+resources/more/words.md:3:58: [7] "so to speak" -> Omit this phrase. (default/hedging)
+resources/more/words.md:5:12: [8] "Squelch" -> Prefer: quell. (default/non-words)
+resources/more/words.md:7:11: [9] "Perchance" -> Archaic: use a current word. (default/archaisms)
+resources/more/words.md:9:32: [10] "abolishment" -> Prefer: abolition. (default/needless-variants)
+resources/more/words.md:9:70: [11] "ironical" -> Prefer: ironic. (default/needless-variants)
+resources/more/words.md:11:21: [12] "the the" -> Repeated word: delete one. (default/repetition)
+resources/more/words.md:11:114: [13] "punctuation punctuation" -> Repeated word: delete one. (default/repetition)
+resources/more/words.md:13:18: [14] "intense apathy" -> Oxymoron: the words cancel out; rephrase. (default/oxymorons)
+resources/more/words.md:15:30: [15] "zero sum game" -> Prefer: zero-sum game. (default/phrasal-adjectives)
+resources/more/words.md:17:9: [16] "Per your request" -> Jargon: say it plainly. (default/jargon)
+resources/more/words.md:19:37: [17] "no brainer" -> Avoid corporate-speak. (default/corporate-speak)

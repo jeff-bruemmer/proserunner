@@ -52,7 +52,7 @@
         },
         {
           "const": "plain",
-          "description": "One issue per line: path:line:col: [n] \"match\" -> message",
+          "description": "One issue per line: path:line:col: [n] \"match\" -> message (rule)",
           "type": "string"
         },
         {
@@ -200,6 +200,14 @@
       ],
       "description": "Defaults for `proserunner check`."
     },
+    "extends": {
+      "default": [],
+      "description": "Configs this one builds on, such as a team's shared style. Each is a layer just below this one, in order, so this file's settings win over theirs, and their `rules` come before this file's own. Paths are relative to the project root in a project config, and to this file's directory in any other.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "fail-on": {
       "allOf": [
         {
@@ -251,7 +259,7 @@
       "type": "object"
     },
     "rules": {
-      "description": "Where rules come from: `\"default\"` for the built-in rules, or directories of rule files. Replaces the list below.",
+      "description": "Where rules come from: `\"default\"` for the built-in rules, or directories of rule files. Replaces the list below, except the lists of configs this one extends, which it adds to.",
       "items": {
         "$ref": "#/definitions/Source"
       },

@@ -42,8 +42,8 @@
 //! format::write(&mut out, &report, Output::Plain, Path::new("."))?;
 //! assert_eq!(
 //!     String::from_utf8(out)?,
-//!     "notes.md:1:4: [1] \"utilize\" -> Prefer: use.\n\
-//!      notes.md:1:12: [2] \"the the\" -> Repeated word: delete one.\n"
+//!     "notes.md:1:4: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
+//!      notes.md:1:12: [2] \"the the\" -> Repeated word: delete one. (default/repetition)\n"
 //! );
 //! # Ok(())
 //! # }

@@ -20,7 +20,7 @@ pub enum Output {
     /// Issues grouped under each file, numbered
     #[default]
     Group,
-    /// One issue per line: path:line:col: [n] "match" -> message
+    /// One issue per line: path:line:col: [n] "match" -> message (rule)
     #[expect(
         rustdoc::broken_intra_doc_links,
         reason = "also --help's and the schema's text, which would show an escaped [n]"

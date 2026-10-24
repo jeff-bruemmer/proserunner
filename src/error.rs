@@ -4,6 +4,7 @@
 use std::io;
 use std::path::PathBuf;
 use std::result;
+use std::slice;
 
 use crate::english;
 use crate::scan::Format;
@@ -77,6 +78,12 @@ pub enum Error {
     /// A command line or environment proserunner can't run with.
     #[error("{0}")]
     Usage(String),
+
+    /// Every mistake one pass found, such as each unknown rule id in a
+    /// config, not only the first. Shown one per line; [`Error::each`]
+    /// lists them.
+    #[error("{}", lines(.0))]
+    Several(Vec<Error>),
 }
 
 impl Error {
@@ -110,6 +117,31 @@ impl Error {
             message: message.into(),
         }
     }
+
+    /// The errors this one stands for: those of an [`Error::Several`], or
+    /// itself.
+    pub fn each(&self) -> &[Error] {
+        match self {
+            Error::Several(errors) => errors,
+            one => slice::from_ref(one),
+        }
+    }
+
+    /// `Ok` when nothing went wrong; otherwise the one error, or an
+    /// [`Error::Several`] of them all.
+    pub(crate) fn all(mut errors: Vec<Error>) -> Result<()> {
+        match errors.len() {
+            0 => Ok(()),
+            1 => Err(errors.remove(0)),
+            _ => Err(Error::Several(errors)),
+        }
+    }
+}
+
+/// Each error on a line of its own.
+fn lines(errors: &[Error]) -> String {
+    let lines: Vec<String> = errors.iter().map(Error::to_string).collect();
+    lines.join("\n")
 }
 
 /// Why proserunner doesn't read a file.

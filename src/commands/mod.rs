@@ -4,6 +4,7 @@
 mod check;
 mod config;
 mod console;
+mod guide;
 mod ignore;
 mod init;
 mod last_run;
@@ -13,6 +14,7 @@ mod setup;
 
 pub(crate) use check::check;
 pub(crate) use config::config_command;
+pub(crate) use guide::{guide_command, schema_command};
 pub(crate) use ignore::ignore_command;
 pub(crate) use init::init;
 pub(crate) use migrate::migrate_command;

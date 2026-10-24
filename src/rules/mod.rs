@@ -15,9 +15,9 @@ pub use rule_file::{
     AcronymsTable, CapitalizationTable, Case, Entry, Examples, Except, Fix, Formula, Level,
     LimitTable, MetricPer, MetricTable, Per, RuleFile, SCHEMA, Style, Term, Unit,
 };
-pub(crate) use rule_set::Target;
 #[cfg(test)]
 pub(crate) use rule_set::compile_one;
 pub use rule_set::{Compiled, RuleIndex, RuleSet};
+pub(crate) use rule_set::{Target, id_name, id_source};
 pub use rule_source::{RuleSource, load_dir};
 pub use template::Template;

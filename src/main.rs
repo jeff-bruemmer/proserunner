@@ -17,7 +17,9 @@ fn main() -> ExitCode {
     match result {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
-            eprintln!("proserunner: {e}");
+            for one in e.each() {
+                eprintln!("proserunner: {one}");
+            }
             ExitCode::from(EXIT_ERROR)
         }
     }
@@ -34,5 +36,7 @@ fn run(ctx: &Ctx, cli: Cli) -> Result<u8> {
         Some(Command::Config) => commands::config_command(ctx, config),
         Some(Command::Init) => commands::init(ctx),
         Some(Command::Migrate { command }) => commands::migrate_command(ctx, &command),
+        Some(Command::Guide { topic }) => commands::guide_command(topic),
+        Some(Command::Schema { kind }) => commands::schema_command(kind),
     }
 }

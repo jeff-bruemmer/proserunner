@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use clap::builder::{PossibleValuesParser, TypedValueParser};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use proserunner::config::Setting;
 use proserunner::format::Output;
 use proserunner::rules::Level;
 use proserunner::scan::Format;
@@ -17,6 +18,8 @@ Examples:
   proserunner README.md --ignore-issues 1,3  Ignore issues by the numbers shown
   proserunner docs/ -o sarif > prose.sarif   Results for code scanning
   proserunner explain hedging                What a rule matches, and what changes it
+  proserunner guide rules                    How to write rules ('proserunner guide' lists the topics)
+  proserunner schema config                  The JSON Schema for config files
 
 Exit status: 0 no issues at --fail-on or above, 1 issues, 2 error.";
 
@@ -107,6 +110,38 @@ pub(crate) enum Command {
         #[command(subcommand)]
         command: MigrateCommand,
     },
+    /// Print the docs for this version, as Markdown; with no TOPIC, list
+    /// the topics
+    Guide { topic: Option<Topic> },
+    /// Print the JSON Schema for config, rule or ignore files, for editors
+    /// and tools that write them
+    Schema { kind: SchemaKind },
+}
+
+/// A page of the docs.
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum Topic {
+    /// What proserunner does, and how to use it (the README)
+    Overview,
+    /// Config files: layers, settings, overrides, ignores
+    Config,
+    /// Writing and testing rules: words, patterns, terms and checks
+    Rules,
+    /// What counts as prose in each format, inline control, JSON output
+    Formats,
+    /// Upgrading from proserunner 0.8
+    Upgrading,
+}
+
+/// A kind of file a JSON Schema describes.
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum SchemaKind {
+    /// config.toml, in the user config directory or .proserunner/
+    Config,
+    /// A rule file
+    Rule,
+    /// ignores.toml
+    Ignores,
 }
 
 #[derive(Args)]
@@ -151,6 +186,11 @@ pub(crate) struct CheckArgs {
     #[arg(long, overrides_with = "code_blocks", help_heading = WHAT)]
     pub no_code_blocks: bool,
 
+    /// Report only RULE's issues: an id, a name only one rule has, or
+    /// source/* for every rule from a source (repeat for more)
+    #[arg(long = "rule", value_name = "RULE", help_heading = WHAT)]
+    pub rules: Vec<String>,
+
     /// Output format [default: group]
     #[arg(short, long, value_enum, help_heading = OUTPUT)]
     pub output: Option<Output>,
@@ -158,6 +198,11 @@ pub(crate) struct CheckArgs {
     /// Exit 1 only for issues at LEVEL or above [default: warning]
     #[arg(long, value_name = "LEVEL", value_enum, help_heading = OUTPUT)]
     pub fail_on: Option<Level>,
+
+    /// Also show the issues config, ignore lists and inline control hide,
+    /// and why (with -o group, plain or json)
+    #[arg(long, help_heading = OUTPUT)]
+    pub show_suppressed: bool,
 
     /// Print how long the run took
     #[arg(long, help_heading = OUTPUT)]
@@ -197,6 +242,29 @@ pub(crate) struct ScopeArgs {
     /// Use the project's ignore list (.proserunner/ignores.toml)
     #[arg(long)]
     pub project: bool,
+}
+
+/// Which config file a command writes. By default, the project's inside a
+/// project, otherwise the user's.
+#[derive(Args, Clone, Copy)]
+pub(crate) struct ConfigScopeArgs {
+    /// Write the user config (~/.config/proserunner/config.toml), even
+    /// inside a project
+    #[arg(long, conflicts_with = "project")]
+    pub global: bool,
+
+    /// Write the project's config (.proserunner/config.toml)
+    #[arg(long)]
+    pub project: bool,
+}
+
+impl From<ConfigScopeArgs> for ScopeArgs {
+    fn from(args: ConfigScopeArgs) -> Self {
+        ScopeArgs {
+            global: args.global,
+            project: args.project,
+        }
+    }
 }
 
 /// `--stdin-format`'s values: the format names config takes.
@@ -264,10 +332,26 @@ pub(crate) enum IgnoreCommand {
 pub(crate) enum RulesCommand {
     /// List rules and their levels (the default)
     List,
+    /// Set a rule's level in config, the project's inside a project
+    Set {
+        /// A rule id, a name only one rule has, or source/* for every rule
+        /// from a source
+        rule: String,
+        /// The rule's new level
+        #[arg(value_enum)]
+        level: Setting,
+        #[command(flatten)]
+        scope: ConfigScopeArgs,
+    },
     /// Check every rule's examples; with DIRs, only the rules in them
     Test { dirs: Vec<PathBuf> },
-    /// Copy the built-in rules into DIR, to edit them
-    Export { dir: PathBuf },
+    /// Copy the built-in rules into DIR, to edit them; with RULEs, only
+    /// those
+    Export {
+        dir: PathBuf,
+        /// Built-in rules by name, such as hedging (default: all of them)
+        rules: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]

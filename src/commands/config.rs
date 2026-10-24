@@ -3,14 +3,14 @@
 use std::path::Path;
 
 use proserunner::Result;
-use proserunner::config;
 use proserunner::ctx::Ctx;
 
 use super::{EXIT_OK, console, setup};
 
+/// Prints the merged config. The rules load too, so every mistake a check
+/// would stop at, such as an id that names no rule, stops this first.
 pub(crate) fn config_command(ctx: &Ctx, config_file: Option<&Path>) -> Result<u8> {
-    let project = setup::prepare(ctx, ctx.project())?;
-    let config = config::load(ctx, project.as_deref(), config_file)?;
-    console::stdout(|out| out.write_all(config.render(ctx).as_bytes()))?;
+    let setup = setup::setup(ctx, ctx.project(), config_file, /*use_ignores=*/ false)?;
+    console::stdout(|out| out.write_all(setup.config.render(ctx).as_bytes()))?;
     Ok(EXIT_OK)
 }

@@ -76,7 +76,8 @@ rules for libraries:
   `RuleId`, because a rule's `id` is its name, such as `default/hedging`.
 - **`RuleSet::compile`** returns `Compiled { rules, errors, warnings }`.
   It's `#[must_use]`, so the rule files that failed can't go unread.
-  `RuleSet` is opaque: `rules()`, `get()`, `find()` and `len()` read it.
+  `RuleSet` is opaque: `rules()`, `get()`, `find()`, `find_source()`
+  and `len()` read it.
 - **Constructors:** one that can fail is `try_new` (`Policy`, `Mask`), and
   `new` never fails.
 - **`#[non_exhaustive]`** is on every exported enum, and on every
@@ -109,6 +110,10 @@ rules for libraries:
 - **Docs:** every public item has one. A type in the JSON Schemas has no
   intra-doc links, because its docs become the schema's descriptions
   word for word.
+- **Errors:** a pass over a file reports every mistake it finds, not the
+  first: `Error::Several` holds them, and `Error::each` lists them, so
+  `main` prints one per line. Within a module, `settings::Problems`
+  collects them.
 - **`Display`** on an enum with `as_str()` uses `f.pad`, so `{:<8}` still
   pads.
 
@@ -166,6 +171,14 @@ $ PROSERUNNER_WRITE_SCHEMAS=1 cargo test json_schemas
 
 Doc comments on those types become the descriptions editors show, so
 write them for people editing the files.
+
+## Built-in docs
+
+`proserunner guide` prints `README.md` and the pages in `docs/`, and
+`proserunner schema` the schemas, from copies built into the binary, so
+what they say matches the version installed. Write the docs for people
+reading them in a terminal too, and keep `docs/` and `schemas/` in
+`Cargo.toml`'s `include`. A test checks that each topic prints its file.
 
 ## Fuzzing
 

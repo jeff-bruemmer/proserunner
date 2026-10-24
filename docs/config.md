@@ -16,7 +16,9 @@ for commands that check nothing (`ignore`, `rules`, `config`), the search
 starts at the working directory. It stops at your home directory and at
 the root of a git repository. Files in two different projects can't be
 checked in one run, since a run has one config. `proserunner init`
-starts a project in the working directory.
+starts a project in the working directory. Any layer can build on other
+configs, such as a team's shared style, with
+[`extends`](#extends).
 
 `proserunner config` prints the merged config, with the file each value
 came from:
@@ -69,6 +71,7 @@ rule."default/hedging".level = "error"
 | --- | --- | --- |
 | `schema` | (required) | The format version: `1` |
 | `inherit` | `true` | `false` leaves out the layers below this one, and their ignore lists |
+| `extends` | none | Configs this one builds on (see [Extends](#extends)) |
 | `rules` | `["default"]` | Where rules come from (see [Rules](rules.md#where-rules-come-from)) |
 | `fail-on` | `"warning"` | The least serious level that makes a run exit 1: `"hint"`, `"warning"` or `"error"` |
 | `accept` | none | Matches no rule reports |
@@ -80,6 +83,7 @@ rule."default/hedging".level = "error"
 | `formats` | none | Formats for files by path pattern (see [Formats](#formats)) |
 | `rule."ID".level` | the rule's own | `"off"`, `"hint"`, `"warning"` or `"error"`, for every entry in the rule, even one with a level of its own |
 | `rule."ID".accept` | none | Matches this rule doesn't report |
+| `rule."SOURCE/*"` | none | `level` and `accept` for every rule from a source, such as `default/*` |
 | `overrides` | none | Settings for some files (see [Overrides](#overrides)) |
 
 Command-line options win over `check.*`: `--quoted-text` and
@@ -94,11 +98,39 @@ Command-line options win over `check.*`: `--quoted-text` and
   and what they match becomes placeholders, like inline code. Use it for
   template syntax and the like.
 - **Rule ids:** a rule id in `[rule."…"]` must name a rule. A misspelled
-  one stops the run, with a "did you mean" when a rule's id is close. An
-  id from a rule source this run doesn't load, such as a project's rules
-  in your user config, is left alone, so one config can serve several
-  projects, unless it's a typo away from a loaded rule
-  (`defualt/hedging`), which stops the run too.
+  one stops the run, with a "did you mean" when a rule's id is close. So
+  does a name without its source, such as `hedging`, and the error names
+  the ids it may mean: config takes whole ids, so adding a rule source
+  never changes what one names. An id from a rule source this run
+  doesn't load, such as a project's rules in your user config, is left
+  alone, so one config can serve several projects, unless it's a typo
+  away from a loaded rule (`defualt/hedging`), which stops the run too.
+- **Every rule from a source:** `[rule."default/*"]` sets a `level` or
+  `accept` for every built-in rule, and `[rule."project/*"]` for every
+  rule in a project's directory. A rule's own `[rule."…"]` table wins
+  over it, in any layer, so `level = "off"` for `default/*` and
+  `level = "warning"` for `default/jargon` keep only jargon. `*` stands
+  only for a whole name: `default/h*` is an error. Overrides take these
+  too.
+- **Mistakes:** a config with several mistakes reports each of them in
+  one run, with the file each is in. A TOML mistake (bad syntax, an
+  unknown key, a value of the wrong type) stops at the first in its
+  file, since nothing after it can be read.
+
+## Changing a level from the command line
+
+```console
+$ proserunner rules set hedging off          # In the project's config, inside a project
+$ proserunner rules set 'default/*' hint     # Every built-in rule
+$ proserunner rules set --global jargon error
+```
+
+`rules set` writes `[rule."ID"] level` into the project's config inside a
+project, and into the user config outside one; `--global` and
+`--project` choose. It takes a rule's id, its name when only one rule
+has it, or `source/*`, and it writes the whole id. It keeps the file's
+comments and layout, and makes the file if there's none. When another
+layer's setting wins over the one it wrote, it says so.
 
 ## How layers merge
 
@@ -112,10 +144,58 @@ Layers apply in order: built-in defaults, user, project, then `--config`.
 - **`inherit = false`** in a project config leaves out the user config
   and the global ignore list. In a `--config` file, it leaves out both
   the user and the project config, and every ignore list.
+- **`extends`:** each config a layer extends is a layer just below it,
+  and `rules` add up within them (see [Extends](#extends)).
 
 Paths in a project config are relative to the project root. Paths in any
 other config are relative to the directory that holds it. `~/` is your
 home directory.
+
+## Extends
+
+A config can build on others, such as a style a team shares across its
+repositories:
+
+```toml
+# .proserunner/config.toml
+schema = 1
+extends = ["../house-style/config.toml"]
+rules = ["default", { path = ".proserunner/rules", prefix = "project" }]
+```
+
+```toml
+# ../house-style/config.toml
+schema = 1
+rules = ["default", { path = "rules", prefix = "house" }]
+accept = ["Kubernetes"]
+
+[rule."default/hedging"]
+level = "off"
+```
+
+- **Order:** each config in `extends` is a layer just below the config
+  that names it, in order. So the config that names them wins over them,
+  and a later one wins over an earlier one. A config can extend others
+  in turn.
+- **Rules:** `rules` add up: a config gets the rules of the configs it
+  extends, then its own, so the project above checks with the built-in
+  rules, `house/…` and `project/…`. To leave some out, turn them off,
+  such as with `[rule."house/*"]`. Between the user config, the project
+  config and `--config`, a later `rules` still replaces an earlier one.
+- **Paths:** `extends` paths are relative to the project root in a project
+  config, and to the config's directory in any other. Paths in an
+  extended config are relative to its own directory, and its path
+  patterns without a `/` match below the project root.
+- **Sharing:** proserunner never uses the network, so share a style as
+  files: a git submodule, or a checkout next to your projects.
+- **Once:** a config extended twice, as when a project and its team's
+  style both extend one base, is read once, below everything that
+  extends it.
+- **Mistakes:** a missing file, a config that extends itself through
+  another, and `inherit` in an extended config are errors. `inherit`
+  decides which layers apply, so it goes in a config named on its own.
+
+`proserunner config` lists every file it merged, extended ones too.
 
 ## Overrides
 
@@ -246,26 +326,31 @@ line = 42                        # optional: only on this line
 
 ## Editor support
 
-The JSON Schemas in [`schemas/`](../schemas) describe each file:
+JSON Schemas describe each file. `proserunner schema` prints the one for
+the version you have, and [`schemas/`](../schemas) holds them too:
 
 | File | Schema |
 | --- | --- |
-| `config.toml` | `schemas/config.schema.json` |
-| rule files | `schemas/rule.schema.json` |
-| `ignores.toml` | `schemas/ignores.schema.json` |
+| `config.toml` | `proserunner schema config`, `schemas/config.schema.json` |
+| rule files | `proserunner schema rule`, `schemas/rule.schema.json` |
+| `ignores.toml` | `proserunner schema ignores`, `schemas/ignores.schema.json` |
 
 Editors that read TOML schemas, such as VS Code with Even Better TOML,
 and anything else built on taplo, then complete keys, show what each one
-means, and mark mistakes as you type. Copy the schema next to the file
+means, and mark mistakes as you type. Write the schema next to the file
 and name it on the first line:
+
+```console
+$ proserunner schema config > .proserunner/config.schema.json
+```
 
 ```toml
 #:schema ./config.schema.json
 schema = 1
 ```
 
-Or copy `schemas/` into the project and tell taplo once, in a
-`.taplo.toml` at the project root:
+Or write each schema into the project's `schemas/` and tell taplo
+once, in a `.taplo.toml` at the project root:
 
 ```toml
 [[rule]]

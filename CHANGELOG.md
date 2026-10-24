@@ -39,6 +39,9 @@ change in detail.
   what to do: "Redundant: “program” says it.", not "Pleonastic phrase."
 - `compression` suggests one word for each time phrase ("after" for
   "subsequent to"), not "before, after, as" for all of them.
+- `regex` is now `heading-periods`, a name that says what it checks, and
+  its message says what to do: "Heading ends with a period: delete it."
+  0.8 settings that name `regex` convert to it.
 
 ### Added
 
@@ -85,9 +88,10 @@ change in detail.
 - 0.8 settings convert on the first run, and `migrate rules` converts
   check files.
 - The default output shows each issue's level and rule id, in color in a
-  terminal (`NO_COLOR` and `CLICOLOR_FORCE` apply). The summary counts
-  the files checked and the issues at each level, and a long report names
-  the rules that found the most.
+  terminal (`NO_COLOR` and `CLICOLOR_FORCE` apply), and `-o plain` ends
+  each line with the rule's id. The summary counts the files checked and
+  the issues at each level, and a long report names the rules and files
+  that found the most.
 - `--ignore-issues` takes the numbers the last run of the same paths
   showed, kept in the cache directory, lists each issue it ignores, and
   shows what's left.
@@ -95,6 +99,21 @@ change in detail.
   extensions it doesn't read.
 - `explain` shows the config that turns a rule off. `--help` groups the
   check options, and `init` says what to run next.
+- `rules set RULE LEVEL`, to change a rule's level in the project or user
+  config without editing it, keeping its comments.
+- `extends`, for a config that builds on others, such as a team's shared
+  style; it gets their rules too.
+- `[rule."source/*"]`, to set every rule from a source; a rule's own
+  table wins over it.
+- `--rule`, to report only some rules' issues, and `--show-suppressed`, to
+  see what config, ignore lists and inline control hide, and why.
+- `proserunner guide` and `proserunner schema`: the docs and the JSON
+  Schemas, built in, for the version installed.
+- `rules export DIR RULE…`, to copy only some built-in rules, with what
+  to do next, and a warning when two rules with the same text are both
+  on.
+- Every mistake in a config or rule file is reported in one run, and a
+  rule's name where an id goes (`hedging`) gets the id it may mean.
 
 ### Removed
 

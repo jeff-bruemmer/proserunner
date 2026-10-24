@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Stdio;
 
-use common::{CLEAN, DIRTY, Env, Run, run};
+use common::{CLEAN, DIRTY, Env, Run, files, run};
 use proserunner::scan::DOCUMENTS;
 use serde_json::Value;
 
@@ -71,6 +71,26 @@ fn a_long_report_names_the_rules_that_found_the_most() {
     env.write("b.md", "We utilize it.\n");
     let r = run(env.cmd().arg("b.md"));
     assert_eq!(r.stderr, "Checked 1 file and found 1 issue.\n");
+
+    // With several files, it names the files too, since one that isn't
+    // prose (test data, say) can be most of a first run.
+    env.write("data/grid.txt", &"0 0 0 0\n\n".repeat(30));
+    let r = run(env.cmd().args(["a.md", "b.md", "data"]));
+    assert_eq!(
+        r.stderr,
+        "Checked 3 files and found 86 issues: 60 errors, 13 warnings and 13 hints.\n\
+         The rules that found the most:\n  \
+         60  default/repetition\n  \
+         13  default/needless-variants\n  \
+         12  default/hedging\n   \
+         1  default/overused-adverbs\n\
+         The files with the most:\n  \
+         60  data/grid.txt\n  \
+         25  a.md\n   \
+         1  b.md\n\
+         'proserunner explain RULE' shows what a rule matches and how to turn it off.\n\
+         A file that isn't prose can go in .proserunnerignore, or in check.exclude in config.\n"
+    );
 }
 
 #[test]
@@ -199,7 +219,7 @@ fn plain_output_is_one_issue_per_line() {
     );
     assert!(
         r.stdout.contains(
-            "dirty.md:3:11: [3] \"due to the fact that\" -> Prefer: because, since, why.\n"
+            "dirty.md:3:11: [3] \"due to the fact that\" -> Prefer: because, since, why. (default/compression)\n"
         )
     );
     assert_eq!(r.stderr, "", "plain output has no summary line");
@@ -488,7 +508,7 @@ bad = ["Send an e-mail."]
     assert_eq!(r.code, 1, "{}", r.stderr);
     assert_eq!(
         r.stdout,
-        "doc.md:1:9: [1] \"e-mail\" -> House style: write “email”.\n"
+        "doc.md:1:9: [1] \"e-mail\" -> House style: write “email”. (style/house)\n"
     );
 }
 
@@ -632,7 +652,7 @@ fix = [["# Getting Started", "# Getting started"]]
     let r = run(env.cmd().args(["long.md", "-o", "plain"]));
     assert_eq!(
         r.stdout,
-        "long.md:3:1: [1] \"Run … and then, after it, run ….\" -> 6 words; keep it to 5 or fewer.\n"
+        "long.md:3:1: [1] \"Run … and then, after it, run ….\" -> 6 words; keep it to 5 or fewer. (style/long)\n"
     );
     let r = run(env.cmd().args(["long.md", "-o", "json"]));
     let v: Value = serde_json::from_str(&r.stdout).unwrap();
@@ -742,7 +762,7 @@ fn migrate_rules_converts_08_checks() {
         .args(["doc.md", "-o", "plain", "--config", "c.toml"]));
     assert_eq!(
         r.stdout,
-        "doc.md:1:1: [1] \"I think\" -> Omit this phrase.\n"
+        "doc.md:1:1: [1] \"I think\" -> Omit this phrase. (new/hedging)\n"
     );
 }
 
@@ -897,12 +917,15 @@ fn sarif_output() {
     assert_eq!(run0["tool"]["driver"]["name"], "proserunner");
     let rules = run0["tool"]["driver"]["rules"].as_array().unwrap();
     let ids: Vec<&str> = rules.iter().map(|r| r["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["default/needless-variants", "default/regex"]);
+    assert_eq!(
+        ids,
+        ["default/heading-periods", "default/needless-variants"]
+    );
 
     let results = run0["results"].as_array().unwrap();
     let period = &results[0];
-    assert_eq!(period["ruleId"], "default/regex");
-    assert_eq!(period["ruleIndex"], 1);
+    assert_eq!(period["ruleId"], "default/heading-periods");
+    assert_eq!(period["ruleIndex"], 0);
     assert_eq!(period["level"], "warning");
     let location = &period["locations"][0]["physicalLocation"];
     assert_eq!(location["artifactLocation"]["uri"], "docs/a%20b.md");
@@ -1028,8 +1051,8 @@ fn org_is_read_natively() {
     // Keywords, tags, verbatim, link targets and code are skipped.
     assert_eq!(
         r.stdout,
-        "notes.org:2:8: [1] \"Utilize\" -> Prefer: use.\n\
-         notes.org:7:4: [2] \"utilize\" -> Prefer: use.\n"
+        "notes.org:2:8: [1] \"Utilize\" -> Prefer: use. (default/needless-variants)\n\
+         notes.org:7:4: [2] \"utilize\" -> Prefer: use. (default/needless-variants)\n"
     );
 }
 
@@ -1264,9 +1287,9 @@ fn a_byte_order_mark_is_not_a_column() {
     let r = run(env.cmd().args(["doc.md", "doc.org", "-o", "plain"]));
     assert_eq!(
         r.stdout,
-        "doc.md:1:6: [1] \"utilize\" -> Prefer: use.\n\
-         doc.md:3:4: [2] \"utilize\" -> Prefer: use.\n\
-         doc.org:1:6: [3] \"utilize\" -> Prefer: use.\n"
+        "doc.md:1:6: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
+         doc.md:3:4: [2] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
+         doc.org:1:6: [3] \"utilize\" -> Prefer: use. (default/needless-variants)\n"
     );
     let r = run(env.cmd().args(["doc.md", "-o", "json"]));
     let json: Value = serde_json::from_str(&r.stdout).unwrap();
@@ -1283,7 +1306,10 @@ fn urls_and_inch_marks_hide_nothing() {
          The board is 5\" wide and we utilize it. Then \"perhaps\".\n",
     );
     let r = run(env.cmd().args(["doc.md", "-o", "plain"]));
-    assert_eq!(r.stdout, "doc.md:3:29: [1] \"utilize\" -> Prefer: use.\n");
+    assert_eq!(
+        r.stdout,
+        "doc.md:3:29: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n"
+    );
 }
 
 #[test]
@@ -1327,4 +1353,190 @@ fn patterns_that_run_out_of_budget_are_reported() {
         .cmd()
         .args(["doc.md", "-o", "plain", "--config", "c.toml"]));
     assert_eq!(r.stderr, "");
+}
+
+#[test]
+fn guide_and_schema_print_what_this_version_reads() {
+    let env = Env::new();
+    let r = run(env.cmd().arg("guide"));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert!(
+        r.stdout.starts_with(
+            "'proserunner guide TOPIC' prints one of these, as Markdown:\n  overview "
+        ),
+        "{}",
+        r.stdout
+    );
+    for (topic, file) in [
+        ("overview", "README.md"),
+        ("config", "docs/config.md"),
+        ("rules", "docs/rules.md"),
+        ("formats", "docs/formats.md"),
+        ("upgrading", "docs/upgrading.md"),
+    ] {
+        let r = run(env.cmd().args(["guide", topic]));
+        let page = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(file)).unwrap();
+        assert_eq!(r.stdout, page, "{topic}");
+    }
+    for kind in ["config", "rule", "ignores"] {
+        let r = run(env.cmd().args(["schema", kind]));
+        assert_eq!(r.code, 0, "{}", r.stderr);
+        let schema: Value = serde_json::from_str(&r.stdout).unwrap();
+        assert!(
+            schema["title"]
+                .as_str()
+                .unwrap()
+                .starts_with("proserunner ")
+        );
+    }
+    let r = run(env.cmd().args(["guide", "nope"]));
+    assert_eq!(r.code, 2);
+}
+
+#[test]
+fn rules_export_copies_some_rules_and_says_how_to_use_them() {
+    let env = Env::new();
+    let r = run(env.cmd().args(["rules", "export", "mine", "hedging"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Wrote hedging.toml to mine/.\n\
+         To use it in place of the built-in, add the directory to `rules` in config, and turn the built-in off:\n  \
+         rules = [\"default\", \"mine\"]\n  \
+         [rule.\"default/hedging\"]\n  \
+         level = \"off\"\n"
+    );
+    assert_eq!(files(&env.path("mine")), ["hedging.toml"]);
+    let r = run(env.cmd().args(["rules", "export", "mine", "hedgin"]));
+    assert_eq!(
+        r.stderr,
+        "proserunner: no rule has the id `hedgin` (did you mean `default/hedging`?)\n"
+    );
+
+    // Both copies on report each issue twice, so a run says so.
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\nrules = [\"default\", \"mine\"]\n",
+    );
+    env.write("doc.md", "I think so.\n");
+    let r = run(env.cmd().args(["doc.md", "-o", "plain"]));
+    assert_eq!(
+        r.stderr,
+        "proserunner: `mine/hedging` is the same rule as `default/hedging`, so each issue they find is reported twice; turn one off, or take its directory out of `rules`\n"
+    );
+    assert_eq!(r.stdout.lines().count(), 2);
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\nrules = [\"default\", \"mine\"]\n[rule.\"default/hedging\"]\nlevel = \"off\"\n",
+    );
+    let r = run(env.cmd().args(["doc.md", "-o", "plain"]));
+    assert_eq!(r.stderr, "");
+    assert_eq!(
+        r.stdout,
+        "doc.md:1:1: [1] \"I think\" -> Omit this phrase. (mine/hedging)\n"
+    );
+
+    let r = run(env.cmd().args(["rules", "export", "all"]));
+    assert!(
+        r.stderr.starts_with(
+            "Wrote 22 rules to all/.\nTo use them in place of the built-ins, set `rules = [\"all\"]` in config.\n"
+        ),
+        "{}",
+        r.stderr
+    );
+}
+
+#[test]
+fn rule_flag_keeps_only_some_rules() {
+    let env = Env::new();
+    env.write("dirty.md", DIRTY);
+    let rules = |args: &[&str]| {
+        let r = run(env.cmd().arg("dirty.md").args(args).args(["-o", "json"]));
+        assert!(r.code < 2, "{}", r.stderr);
+        let v: Value = serde_json::from_str(&r.stdout).unwrap();
+        v["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["rule"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(rules(&["--rule", "jargon"]), ["default/jargon"]);
+    assert_eq!(
+        rules(&["--rule", "default/jargon", "--rule", "compression"]),
+        ["default/compression", "default/jargon"]
+    );
+    assert_eq!(rules(&["--rule", "default/*"]).len(), 4);
+    let r = run(env.cmd().args(["dirty.md", "--rule", "jargn"]));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: --rule: no rule has the id `jargn` (did you mean `default/jargon`?)\n"
+    );
+    let r = run(env.cmd().args(["dirty.md", "--rule", "mine/*"]));
+    assert_eq!(r.stderr, "proserunner: --rule: no rules come from `mine`\n");
+}
+
+#[test]
+fn show_suppressed_says_what_hid_each_issue() {
+    let env = Env::new();
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\naccept = [\"synergy\"]\n[rule.\"default/compression\"]\nlevel = \"off\"\n",
+    );
+    env.write(
+        "doc.md",
+        "We utilize synergy due to the fact that it works.\n\n\
+         <!-- proserunner-disable-next-line -->\nWe utilize it.\n",
+    );
+    let r = run(env.cmd().args(["doc.md", "--show-suppressed"]));
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert_eq!(
+        r.stdout,
+        "\ndoc.md\n\
+         [1]  1:4  warning  \"utilize\" -> Prefer: use.  default/needless-variants\n\
+         \nHidden by config, ignore lists and inline control:\n\
+         \ndoc.md\n\
+         1:12  warning  \"synergy\"              -> Avoid corporate-speak.        default/corporate-speak    accepted in .proserunner/config.toml\n\
+         1:20  warning  \"due to the fact that\" -> Prefer: because, since, why.  default/compression        off in .proserunner/config.toml\n\
+         4:4   warning  \"utilize\"              -> Prefer: use.                  default/needless-variants  off by the comment on line 3\n"
+    );
+    assert_eq!(
+        r.stderr,
+        "Checked 1 file and found 1 issue.\n\
+         3 issues that config, ignore lists or inline control hide are shown last.\n"
+    );
+
+    let r = run(env
+        .cmd()
+        .args(["doc.md", "--show-suppressed", "-o", "plain"]));
+    assert_eq!(
+        r.stdout.lines().nth(1),
+        Some(
+            "doc.md:1:12: [hidden] \"synergy\" -> Avoid corporate-speak. (default/corporate-speak; accepted in .proserunner/config.toml)"
+        )
+    );
+    let r = run(env
+        .cmd()
+        .args(["doc.md", "--show-suppressed", "-o", "json"]));
+    let v: Value = serde_json::from_str(&r.stdout).unwrap();
+    let hidden = &v["suppressed"][1];
+    assert_eq!(hidden["rule"], "default/compression");
+    assert_eq!(hidden["hidden_by"], "off");
+    assert_eq!(hidden["reason"], "off in .proserunner/config.toml");
+    assert!(hidden.get("number").is_none());
+    assert_eq!(v["issues"][0]["number"], 1);
+    // Without the flag, JSON has no `suppressed` at all.
+    let r = run(env.cmd().args(["doc.md", "-o", "json"]));
+    let v: Value = serde_json::from_str(&r.stdout).unwrap();
+    assert!(v.get("suppressed").is_none());
+
+    let r = run(env
+        .cmd()
+        .args(["doc.md", "--show-suppressed", "-o", "sarif"]));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: --show-suppressed works with -o group, plain and json, not -o sarif\n"
+    );
 }

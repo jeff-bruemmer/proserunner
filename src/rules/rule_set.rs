@@ -22,7 +22,7 @@ use super::template::{COMMON, Template};
 use crate::error::Error;
 use crate::prose;
 use crate::scan::Scope;
-use crate::settings;
+use crate::settings::{self, Problems};
 use crate::typo;
 
 /// Backtracking budget for patterns that need lookaround or backreferences.
@@ -57,7 +57,8 @@ impl RuleIndex {
 pub struct Compiled {
     /// Every rule that compiled.
     pub rules: RuleSet,
-    /// One per rule file left out.
+    /// One per rule file left out, with each of its problems (see
+    /// [`Error::each`]).
     pub errors: Vec<Error>,
     /// Problems that don't stop any rule from loading, such as patterns
     /// running slower than they could.
@@ -156,8 +157,12 @@ impl RuleSet {
                     rules.push(rule);
                     parts.append(rule_parts);
                 }
-                Err(message) => {
-                    errors.push(Error::rule(source.origin, message));
+                Err(problems) => {
+                    let each = problems
+                        .into_iter()
+                        .map(|p| Error::rule(&source.origin, p))
+                        .collect();
+                    errors.extend(Error::all(each).err());
                     left_out.push(source.id);
                 }
             }
@@ -225,22 +230,18 @@ impl RuleSet {
         let named: Vec<&Rule> = self
             .rules
             .iter()
-            .filter(|r| r.id.rsplit('/').next() == Some(query))
+            .filter(|r| id_name(&r.id) == query)
             .collect();
         match named.as_slice() {
             [rule] => Ok(rule),
             [] => {
+                let ids = || self.rules.iter().map(|r| r.id.as_str());
                 // A name alone is compared with names, an id with ids.
                 let hint = if query.contains('/') {
-                    typo::closest(query, self.rules.iter().map(|r| r.id.as_str()))
+                    typo::closest(query, ids())
                 } else {
-                    let names = self.rules.iter().filter_map(|r| r.id.rsplit('/').next());
-                    typo::closest(query, names).and_then(|name| {
-                        self.rules
-                            .iter()
-                            .map(|r| r.id.as_str())
-                            .find(|id| id.rsplit('/').next() == Some(name))
-                    })
+                    typo::closest(query, ids().map(id_name))
+                        .and_then(|name| ids().find(|id| id_name(id) == name))
                 };
                 let hint = hint
                     .map(|c| format!(" (did you mean `{c}`?)"))
@@ -256,6 +257,34 @@ impl RuleSet {
             }
         }
     }
+
+    /// The rules from `source`, as `source/*` means them. None is an
+    /// error, with the closest source.
+    pub fn find_source(&self, source: &str) -> Result<Vec<&Rule>, String> {
+        let from: Vec<&Rule> = self
+            .rules
+            .iter()
+            .filter(|r| id_source(&r.id) == source)
+            .collect();
+        if !from.is_empty() {
+            return Ok(from);
+        }
+        let sources = self.rules.iter().map(|r| id_source(&r.id));
+        let hint = typo::closest_within(source, sources, 2)
+            .map(|c| format!(" (did you mean `{c}/*`?)"))
+            .unwrap_or_default();
+        Err(format!("no rules come from `{source}`{hint}"))
+    }
+}
+
+/// The source part of a rule id: `default` for `default/hedging`.
+pub(crate) fn id_source(id: &str) -> &str {
+    id.split_once('/').map_or(id, |(source, _)| source)
+}
+
+/// The name part of a rule id: `hedging` for `default/hedging`.
+pub(crate) fn id_name(id: &str) -> &str {
+    id.rsplit_once('/').map_or(id, |(_, name)| name)
 }
 
 /// Matcher inputs collected from every rule before building.
@@ -393,19 +422,22 @@ fn name_from_stem(stem: &str) -> String {
     }
 }
 
-/// One rule, and what it adds to the shared matcher. `index` is the
-/// rule's place in the set.
-fn compile_rule(source: &RuleSource<'_>, index: RuleIndex) -> Result<(Rule, Parts), String> {
-    let file: RuleFile = rule_file::parse(&source.text)?;
-    settings::check_schema(file.schema, SCHEMA)?;
-    let checks = checks::compile(&file)?;
+/// One rule, and what it adds to the shared matcher, or every problem
+/// that keeps it from compiling. `index` is the rule's place in the set.
+/// A TOML mistake stops at the first, since nothing after it is read.
+fn compile_rule(source: &RuleSource<'_>, index: RuleIndex) -> Result<(Rule, Parts), Vec<String>> {
+    let file: RuleFile = rule_file::parse(&source.text).map_err(|e| vec![e])?;
+    settings::check_schema(file.schema, SCHEMA).map_err(|e| vec![e])?;
+    let mut problems = Problems::default();
+    let checks = problems.keep(checks::compile(&file)).unwrap_or_default();
     if file.words.is_empty()
         && file.patterns.is_empty()
         && file.terms.is_empty()
         && checks.is_empty()
+        && problems.is_empty()
     {
         let keys: Vec<String> = checks::keys().map(|k| format!("`{k}`")).collect();
-        return Err(format!(
+        problems.add(format!(
             "the rule has nothing to match: add `words`, `patterns`, `terms`, or a check ({})",
             keys.join(", ")
         ));
@@ -414,7 +446,7 @@ fn compile_rule(source: &RuleSource<'_>, index: RuleIndex) -> Result<(Rule, Part
         && !file.scope.is_empty()
         && !file.scope.contains(&Scope::Heading)
     {
-        return Err(
+        problems.add(
             "`heading-levels` chooses headings, but `scope` has no \"heading\": add it, or drop `heading-levels`"
                 .into(),
         );
@@ -448,14 +480,28 @@ fn compile_rule(source: &RuleSource<'_>, index: RuleIndex) -> Result<(Rule, Part
         )
         .chain(terms.into_iter().map(|t| Draft::term(t, level)));
     for draft in drafts {
-        let draft = draft?;
-        let pieces = pieces(draft.kind, &draft.source, &draft.variants, draft.case)?;
+        let Some(draft) = problems.keep(draft) else {
+            continue;
+        };
+        let Some(pieces) = problems.keep(pieces(
+            draft.kind,
+            &draft.source,
+            &draft.variants,
+            draft.case,
+        )) else {
+            continue;
+        };
         let groups = match (draft.kind, pieces.first()) {
-            (EntryKind::Pattern, Some(piece)) => group_vars(&draft.source, &piece.matcher)?,
-            _ => Vec::new(),
+            (EntryKind::Pattern, Some(piece)) => group_vars(&draft.source, &piece.matcher),
+            _ => Ok(Vec::new()),
+        };
+        let Some(groups) = problems.keep(groups) else {
+            continue;
         };
         let vars: Vec<&str> = groups.iter().map(String::as_str).collect();
-        let wording = draft.wording(&vars, &mut rule_message)?;
+        let Some(wording) = problems.keep(draft.wording(&vars, &mut rule_message)) else {
+            continue;
+        };
         let captures =
             wording.message.uses_vars() || wording.suggest.iter().any(Template::uses_vars);
         for piece in pieces {
@@ -480,27 +526,30 @@ fn compile_rule(source: &RuleSource<'_>, index: RuleIndex) -> Result<(Rule, Part
     }
 
     for (i, check) in checks.iter().enumerate() {
-        add_wants(&mut parts, check, index, i as u32)?;
+        problems.keep(add_wants(&mut parts, check, index, i as u32));
     }
     let checks: Vec<CompiledCheck> = checks
         .into_iter()
-        .map(|check| {
-            let wording = check_wording(&check, message.as_deref())?;
-            Ok(CompiledCheck { check, wording })
+        .filter_map(|check| {
+            let wording = problems.keep(check_wording(&check, message.as_deref()))?;
+            Some(CompiledCheck { check, wording })
         })
-        .collect::<Result<_, String>>()?;
+        .collect();
     if checks.is_empty() {
-        rule_message.check_unused()?;
+        problems.keep(rule_message.check_unused());
     } else {
         parts.checked.push(index);
     }
 
     let except: Vec<Exception> = except
         .iter()
-        .map(|e| exception(e, case))
-        .collect::<Result<_, _>>()?;
+        .filter_map(|e| problems.keep(exception(e, case)))
+        .collect();
+    if !problems.is_empty() {
+        return Err(problems.into_vec());
+    }
 
-    let stem = source.id.rsplit('/').next().unwrap_or(&source.id);
+    let stem = id_name(&source.id);
     let rule = Rule {
         index,
         id: source.id.clone(),
@@ -581,9 +630,12 @@ impl Draft {
                 .collect::<Result<_, _>>()
                 .map_err(at)?,
         };
+        // A mistake in the rule's message is the same for every entry
+        // without groups, so it names none of them, and shows once.
+        let in_rule_message = |e: String| if vars.is_empty() { e } else { at(e) };
         let message = match self.message.as_deref() {
             Some(m) => Template::parse(m, vars).map_err(at)?,
-            None => match rule_message.parse(vars).map_err(at)? {
+            None => match rule_message.parse(vars).map_err(in_rule_message)? {
                 Some(t) => t,
                 None if !suggest.is_empty() => Template::parse(SUGGEST_MESSAGE, &[])?,
                 None => {
@@ -838,7 +890,8 @@ fn literal_piece(word: &str, written: &str, case: Case) -> Result<Piece, String>
 }
 
 fn pattern_piece(pattern: &str, case: Case) -> Result<Piece, String> {
-    let source = if case == Case::Insensitive {
+    // A pattern that already starts with the flag is left as written.
+    let source = if case == Case::Insensitive && !pattern.starts_with("(?i)") {
         format!("(?i){pattern}")
     } else {
         pattern.to_owned()
@@ -950,6 +1003,40 @@ mod tests {
     }
 
     #[test]
+    fn every_problem_in_a_rule_file_is_reported_once() {
+        let compiled = RuleSet::compile([source(
+            "schema = 1\nmessage = \"{sugestion}\"\nwords = [\"a\", \"b\", { match = \"c\", message = \"{mtach}\" }]\n\
+             patterns = ['(x']\nexcept = [{ pattern = '(' }]",
+        )]);
+        // One error for the one file left out, holding each problem.
+        assert_eq!(compiled.errors.len(), 1);
+        let lines: Vec<String> = compiled.errors[0]
+            .each()
+            .iter()
+            .map(Error::to_string)
+            .collect();
+        assert_eq!(lines.len(), 4, "{lines:?}");
+        // The rule's message is wrong for "a" and "b" alike, so it shows
+        // once, naming neither.
+        assert_eq!(
+            lines[0],
+            "test/rule: unknown placeholder `{sugestion}` in message (did you mean `{suggestion}`?)"
+        );
+        assert_eq!(
+            lines[1],
+            "test/rule: `c`: unknown placeholder `{mtach}` in message (did you mean `{match}`?)"
+        );
+        assert!(
+            lines[2].starts_with("test/rule: invalid pattern `(x`"),
+            "{lines:?}"
+        );
+        assert!(
+            lines[3].starts_with("test/rule: invalid except pattern `(`"),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
     fn entries_without_any_message_are_errors() {
         let e = compile_one("schema = 1\nwords = [\"a\"]").unwrap_err();
         assert!(e.contains("has no message"), "{e}");
@@ -1040,11 +1127,11 @@ mod tests {
             r#"schema = 1
             message = "m"
             words = ["synerg{y,ies}", "etc.", "über"]
-            patterns = ['\d+%', 'fast(?= track)']"#,
+            patterns = ['\d+%', 'fast(?= track)', '(?i)a']"#,
         )
         .unwrap();
         let rule = &set.rules[0];
-        let forms: Vec<Vec<Form>> = (0..5).map(|i| rule.forms(i).unwrap()).collect();
+        let forms: Vec<Vec<Form>> = (0..6).map(|i| rule.forms(i).unwrap()).collect();
         let literal = |text: &str, right| Form {
             engine: Engine::Literal,
             text: text.into(),
@@ -1060,6 +1147,7 @@ mod tests {
         assert_eq!(forms[2][0].text, "(?i)über");
         assert_eq!(forms[3][0].text, "(?i)\\d+%");
         assert_eq!(forms[4][0].engine, Engine::Backtracking);
+        assert_eq!(forms[5][0].text, "(?i)a");
     }
 
     #[test]

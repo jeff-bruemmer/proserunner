@@ -5,6 +5,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use crate::lint::Issue;
+use crate::policy::{Suppressed, Suppression};
 use crate::rules::{Level, Rule, RuleSet};
 use crate::scan::{BOM, PLACEHOLDER};
 
@@ -22,6 +23,10 @@ pub struct Document {
     /// What [`Policy::apply`](crate::policy::Policy::apply) kept, in source
     /// order.
     pub issues: Vec<Issue>,
+    /// What it hid, with why, when it was asked to keep them (see
+    /// [`Policy::set_keep_suppressed`](crate::policy::Policy::set_keep_suppressed)).
+    /// Empty from [`Document::new`].
+    pub suppressed: Vec<Suppressed>,
 }
 
 impl Document {
@@ -32,6 +37,7 @@ impl Document {
             path,
             source,
             issues,
+            suppressed: Vec::new(),
         }
     }
 }
@@ -112,7 +118,8 @@ pub fn line_start(source: &str, start: usize) -> usize {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Reported<'report> {
-    /// From 1, in report order.
+    /// From 1, in report order; 0 for an issue in
+    /// [`Report::suppressed`], which has none.
     pub number: usize,
     /// The document's path, as shown.
     pub file: &'report str,
@@ -142,6 +149,20 @@ pub struct Reported<'report> {
     pub source: &'report str,
     /// The whole lines the match is on, as bytes of `source`.
     pub lines: Range<usize>,
+    /// Why it wasn't reported, for an issue in [`Report::suppressed`];
+    /// `None` for one that's reported.
+    pub hidden: Option<Hidden<'report>>,
+}
+
+/// Why an issue in [`Report::suppressed`] wasn't reported.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct Hidden<'report> {
+    /// What hid it.
+    pub why: &'report Suppression,
+    /// What hid it, for people: "accepted in .proserunner/config.toml",
+    /// or "off by the comment on line 4".
+    pub reason: String,
 }
 
 impl<'report> Reported<'report> {
@@ -175,6 +196,12 @@ pub struct Report<'report> {
     pub files: Vec<&'report Document>,
     /// In file, then source, order.
     pub issues: Vec<Reported<'report>>,
+    /// The issues config, ignore lists and inline control hid, when the
+    /// policy kept them, in file, then source, order. Each has a
+    /// [`Reported::hidden`], and its `number` is 0, since it has none.
+    /// The `group`, `plain` and `json` formats show them; the others are
+    /// for tools that act on issues, and leave them out.
+    pub suppressed: Vec<Reported<'report>>,
 }
 
 /// Numbers every issue in file, then source, order.
@@ -184,47 +211,88 @@ pub fn build<'a>(rules: &'a RuleSet, documents: &'a [Document]) -> Report<'a> {
     files.sort_by(|a, b| a.display.cmp(&b.display));
 
     let mut issues = Vec::new();
+    let mut suppressed = Vec::new();
     for &doc in &files {
         let index = LineIndex::new(&doc.source);
         for issue in &doc.issues {
-            let Some(rule) = rules.get(issue.rule) else {
-                continue;
-            };
-            let Position { line, column } = index.position(&doc.source, issue.span.start);
-            let end = index.position(&doc.source, issue.span.end);
-            let wording = rule.wording(issue.entry);
-            let suggestions = wording
-                .map(|w| w.suggestions(&issue.matched, &rule.name, &issue.args))
-                .unwrap_or_default();
-            let message = wording
-                .map(|w| w.render(&shown(&issue.matched), &rule.name, &issue.args))
-                .unwrap_or_default();
-            // A match that ends a line ends where the next line starts.
-            let last_line = if end.column == 1 && end.line > line {
-                end.line - 1
-            } else {
-                end.line
-            };
-            issues.push(Reported {
-                number: issues.len() + 1,
-                file: &doc.display,
-                path: doc.path.as_deref(),
-                line,
-                column,
-                end_line: end.line,
-                end_column: end.column,
-                span: issue.span.clone(),
-                rule,
-                matched: &issue.matched,
-                message,
-                suggestions,
-                level: issue.level,
-                source: &doc.source,
-                lines: index.lines(&doc.source, line, last_line),
-            });
+            if let Some(mut r) = reported(rules, doc, &index, issue) {
+                r.number = issues.len() + 1;
+                issues.push(r);
+            }
+        }
+        for s in &doc.suppressed {
+            if let Some(mut r) = reported(rules, doc, &index, &s.issue) {
+                let reason = reason(&s.why, doc, &index);
+                r.hidden = Some(Hidden {
+                    why: &s.why,
+                    reason,
+                });
+                suppressed.push(r);
+            }
         }
     }
-    Report { files, issues }
+    Report {
+        files,
+        issues,
+        suppressed,
+    }
+}
+
+/// An issue in `doc`, placed and worded, numbered 0 and not hidden; `None`
+/// when its rule isn't in `rules`.
+fn reported<'a>(
+    rules: &'a RuleSet,
+    doc: &'a Document,
+    index: &LineIndex,
+    issue: &'a Issue,
+) -> Option<Reported<'a>> {
+    let rule = rules.get(issue.rule)?;
+    let Position { line, column } = index.position(&doc.source, issue.span.start);
+    let end = index.position(&doc.source, issue.span.end);
+    let wording = rule.wording(issue.entry);
+    let suggestions = wording
+        .map(|w| w.suggestions(&issue.matched, &rule.name, &issue.args))
+        .unwrap_or_default();
+    let message = wording
+        .map(|w| w.render(&shown(&issue.matched), &rule.name, &issue.args))
+        .unwrap_or_default();
+    // A match that ends a line ends where the next line starts.
+    let last_line = if end.column == 1 && end.line > line {
+        end.line - 1
+    } else {
+        end.line
+    };
+    Some(Reported {
+        number: 0,
+        file: &doc.display,
+        path: doc.path.as_deref(),
+        line,
+        column,
+        end_line: end.line,
+        end_column: end.column,
+        span: issue.span.clone(),
+        rule,
+        matched: &issue.matched,
+        message,
+        suggestions,
+        level: issue.level,
+        source: &doc.source,
+        lines: index.lines(&doc.source, line, last_line),
+        hidden: None,
+    })
+}
+
+/// What hid an issue in `doc`, for people.
+fn reason(why: &Suppression, doc: &Document, index: &LineIndex) -> String {
+    match why {
+        Suppression::Directive { at } => format!(
+            "off by the comment on line {}",
+            index.position(&doc.source, *at).line
+        ),
+        Suppression::Off { origin } => format!("off in {origin}"),
+        Suppression::Accepted { origin } => format!("accepted in {origin}"),
+        Suppression::Ignored { origin } => format!("ignored in {origin}"),
+    }
 }
 
 #[cfg(test)]

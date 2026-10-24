@@ -1,11 +1,10 @@
 schema = 1
-name = "Regex"
-explain = "Raw regular expressions."
+explain = "A heading is a label, not a sentence, so it doesn't end with a period."
 case = "sensitive"
 scope = ["heading"]
 
 patterns = [
-    { match = '\.\s*$', message = "Headings shouldn't end with period." },
+    { match = '\.\s*$', message = "Heading ends with a period: delete it." },
 ]
 
 [examples]

@@ -32,6 +32,7 @@ struct Widths {
     level: usize,
     specimen: usize,
     message: usize,
+    rule: usize,
 }
 
 fn widths(issues: &[Reported<'_>]) -> Widths {
@@ -43,6 +44,7 @@ fn widths(issues: &[Reported<'_>]) -> Widths {
         level: max(&|i| i.level.as_str().len()),
         specimen: max(&|i| specimen(&i.shown()).width()),
         message: max(&|i| i.message.width()).min(MAX_MESSAGE_WIDTH),
+        rule: max(&|i| i.rule.id.width()),
     }
 }
 
@@ -97,30 +99,56 @@ fn cell(text: &str, width: usize, style: Style) -> Cell<'_> {
     Cell { text, width, style }
 }
 
-/// Writes `report`; `styled` adds ANSI styles.
+/// Writes `report`, then the issues it hid, if it kept them, without
+/// numbers and with why; `styled` adds ANSI styles.
 pub(super) fn write(out: &mut dyn Write, report: &Report<'_>, styled: bool) -> io::Result<()> {
-    let w = widths(&report.issues);
+    rows(out, &report.issues, styled)?;
+    if !report.suppressed.is_empty() {
+        let style = if styled { BOLD } else { Style::new() };
+        let heading = "Hidden by config, ignore lists and inline control:";
+        writeln!(out)?;
+        writeln!(out, "{}", cell(heading, 0, style))?;
+        rows(out, &report.suppressed, styled)?;
+    }
+    Ok(())
+}
+
+/// One row per issue, under a line for each file. A hidden issue's row
+/// has no number, and ends with why it's hidden.
+fn rows(out: &mut dyn Write, issues: &[Reported<'_>], styled: bool) -> io::Result<()> {
+    let w = widths(issues);
     let style = |s: Style| if styled { s } else { Style::new() };
     let mut file: Option<&str> = None;
 
-    for i in &report.issues {
+    for i in issues {
         if file != Some(i.file) {
             writeln!(out)?;
             writeln!(out, "{}", cell(i.file, 0, style(BOLD)))?;
             file = Some(i.file);
         }
+        if i.hidden.is_none() {
+            let number = format!("[{}]", i.number);
+            write!(out, "{}{GAP}", cell(&number, w.number, Style::new()))?;
+        }
         // Right-justify lines and left-justify columns so the colons line up.
         let position = format!("{:>width$}:{}", i.line, i.column, width = w.line);
-        writeln!(
+        write!(
             out,
-            "{}{GAP}{}{GAP}{}{GAP}{} -> {}{GAP}{}",
-            cell(&format!("[{}]", i.number), w.number, Style::new()),
+            "{}{GAP}{}{GAP}{} -> {}{GAP}",
             cell(&position, w.line + 1 + w.column, style(DIM)),
             cell(i.level.as_str(), w.level, style(level_style(i.level))),
             cell(&specimen(&i.shown()), w.specimen, style(BOLD)),
             cell(&i.message, w.message, Style::new()),
-            cell(&i.rule.id, 0, style(DIM)),
         )?;
+        match &i.hidden {
+            None => writeln!(out, "{}", cell(&i.rule.id, 0, style(DIM)))?,
+            Some(hidden) => writeln!(
+                out,
+                "{}{GAP}{}",
+                cell(&i.rule.id, w.rule, style(DIM)),
+                hidden.reason
+            )?,
+        }
     }
     Ok(())
 }

@@ -11,6 +11,32 @@ pub(crate) fn parse<T: DeserializeOwned>(text: &str) -> Result<T, String> {
     toml::from_str(text).map_err(|e| e.to_string().trim_end().to_owned())
 }
 
+/// The mistakes found in a file, each once, in the order found, so one
+/// run can report them all.
+#[derive(Debug, Default)]
+pub(crate) struct Problems(Vec<String>);
+
+impl Problems {
+    /// `result`'s value, or `None` with its error kept.
+    pub(crate) fn keep<T>(&mut self, result: Result<T, String>) -> Option<T> {
+        result.map_err(|e| self.add(e)).ok()
+    }
+
+    pub(crate) fn add(&mut self, problem: String) {
+        if !self.0.contains(&problem) {
+            self.0.push(problem);
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn into_vec(self) -> Vec<String> {
+        self.0
+    }
+}
+
 /// An error unless a file's `schema` is the one this version reads.
 pub(crate) fn check_schema(found: u32, reads: u32) -> Result<(), String> {
     if found == reads {

@@ -23,7 +23,7 @@
 //! Edits go through `toml_edit`, so comments people add survive, and a
 //! file that doesn't parse is never written: the edit fails instead.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::ops::RangeInclusive;
@@ -409,8 +409,8 @@ fn table_for(entry: &Entry) -> Table {
 #[derive(Debug, Default)]
 #[non_exhaustive]
 pub struct Ignores {
-    /// Keys (see [`key`]).
-    pub accept: HashSet<String>,
+    /// Keys (see [`key`]), each with the list it's in, as shown.
+    pub accept: HashMap<String, String>,
     /// `[[issue]]` entries, by the absolute path of their file.
     pub issues: HashMap<PathBuf, Vec<Ignored>>,
 }
@@ -425,6 +425,8 @@ pub struct Ignored {
     pub matched: String,
     /// Only on this line.
     pub line: Option<usize>,
+    /// The list it's in, as shown.
+    pub origin: String,
 }
 
 /// The lists of `scopes`, merged.
@@ -434,7 +436,10 @@ pub fn load(ctx: &Ctx, scopes: &[ListScope]) -> Result<Ignores> {
         let Some(list) = read(ctx, scope)? else {
             continue;
         };
-        ignores.accept.extend(list.accept.iter().map(|a| key(a)));
+        let origin = ctx.display(&path(ctx, scope)?);
+        ignores
+            .accept
+            .extend(list.accept.iter().map(|a| (key(a), origin.clone())));
         for e in list.issue {
             ignores
                 .issues
@@ -444,6 +449,7 @@ pub fn load(ctx: &Ctx, scopes: &[ListScope]) -> Result<Ignores> {
                     rule: e.rule,
                     matched: key(&e.matched),
                     line: e.line,
+                    origin: origin.clone(),
                 });
         }
     }

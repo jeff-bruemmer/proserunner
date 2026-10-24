@@ -11,11 +11,15 @@ use super::{EXIT_OK, console};
 
 const PROJECT_CONFIG: &str = r#"# proserunner project config. Paths are relative to the project root.
 # 'proserunner config' shows the merged config and where each value
-# came from.
+# came from; 'proserunner guide config' explains every setting.
 schema = 1
 rules = ["default", { path = ".proserunner/rules", prefix = "project" }]
 
-# Turn a rule off, or change its level:
+# Build on a shared config, such as a team's house style:
+# extends = ["../house-style/config.toml"]
+
+# Turn a rule off, or change its level ('proserunner rules set' writes
+# these for you):
 # [rule."default/hedging"]
 # level = "off"
 "#;
@@ -53,5 +57,9 @@ pub(crate) fn init(ctx: &Ctx) -> Result<u8> {
         ),
     );
     console::status(ctx, "Next, check the project: proserunner .");
+    console::status(
+        ctx,
+        "Rules of your own go in .proserunner/rules/; 'proserunner guide rules' shows how to write them.",
+    );
     Ok(EXIT_OK)
 }

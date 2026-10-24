@@ -156,7 +156,7 @@ exclude = ["drafts/"]
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert_eq!(
         r.stdout,
-        "docs/a.md:1:34: [1] \"I think\" -> Omit this phrase.\n"
+        "docs/a.md:1:34: [1] \"I think\" -> Omit this phrase. (default/hedging)\n"
     );
     // A file named directly is checked even when excluded.
     let r = run(env.cmd().arg("docs/drafts/b.md"));
@@ -335,7 +335,9 @@ fn project_rules_get_their_prefix() {
     assert_eq!(r.code, 0, "{}", r.stderr);
     assert_eq!(
         r.stderr,
-        "Created .proserunner/config.toml and .proserunner/rules/.\nNext, check the project: proserunner .\n"
+        "Created .proserunner/config.toml and .proserunner/rules/.\n\
+         Next, check the project: proserunner .\n\
+         Rules of your own go in .proserunner/rules/; 'proserunner guide rules' shows how to write them.\n"
     );
     assert!(env.path(".proserunner/rules").is_dir());
     env.write(
@@ -404,8 +406,8 @@ fn ignore_issues_by_number_and_all() {
     assert_eq!(r.code, 1, "{}", r.stderr);
     assert_eq!(
         r.stdout,
-        "dirty.md:1:4: [1] \"utilize\" -> Prefer: use.\n\
-         dirty.md:3:11: [2] \"due to the fact that\" -> Prefer: because, since, why.\n"
+        "dirty.md:1:4: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
+         dirty.md:3:11: [2] \"due to the fact that\" -> Prefer: because, since, why. (default/compression)\n"
     );
     assert_eq!(
         r.stderr,
@@ -942,8 +944,8 @@ fn migrates_08_user_settings_once() {
     // jargon was left out of :files, so it's off; old.edn wasn't listed.
     assert_eq!(
         r.stdout,
-        "doc.md:1:9: [1] \"e-mail\" -> Prefer: email.\n\
-         doc.md:1:28: [2] \"due to the fact that\" -> Prefer: because, since, why.\n"
+        "doc.md:1:9: [1] \"e-mail\" -> Prefer: email. (style/house)\n\
+         doc.md:1:28: [2] \"due to the fact that\" -> Prefer: because, since, why. (default/compression)\n"
     );
 
     let config = env.read(&format!("{dir}/config.toml"));
@@ -1124,5 +1126,316 @@ fn a_rule_id_a_typo_away_from_a_loaded_one_is_an_error() {
         r.stderr.contains("did you mean `default/jargon`?"),
         "{}",
         r.stderr
+    );
+}
+
+// ---------------------------------------------------------------------
+// Customizing: rules set, extends, source patterns, and mistakes.
+
+#[test]
+fn rules_set_writes_the_full_id_and_keeps_comments() {
+    let env = Env::new();
+    run(env.cmd().args(["init", "-q"]));
+    let r = run(env.cmd().args(["rules", "set", "hedging", "off"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Set default/hedging to off in .proserunner/config.toml.\n"
+    );
+    let config = env.read(".proserunner/config.toml");
+    assert!(
+        config.contains("# Turn a rule off, or change its level"),
+        "{config}"
+    );
+    assert!(
+        config.ends_with("\n[rule.\"default/hedging\"]\nlevel = \"off\"\n"),
+        "{config}"
+    );
+
+    let r = run(env.cmd().args(["rules", "set", "default/hedging", "off"]));
+    assert_eq!(
+        r.stderr,
+        "default/hedging is already off in .proserunner/config.toml.\n"
+    );
+    run(env.cmd().args(["rules", "set", "default/*", "hint"]));
+    assert!(
+        env.read(".proserunner/config.toml")
+            .contains("[rule.\"default/*\"]\nlevel = \"hint\"\n")
+    );
+
+    let r = run(env.cmd().args(["rules", "set", "hedgin", "off"]));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: no rule has the id `hedgin` (did you mean `default/hedging`?)\n"
+    );
+    let r = run(env.cmd().args(["rules", "set", "mine/*", "off"]));
+    assert_eq!(r.stderr, "proserunner: no rules come from `mine`\n");
+}
+
+#[test]
+fn rules_set_says_when_another_layer_wins() {
+    let env = Env::new();
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\n[rule.\"default/jargon\"]\nlevel = \"error\"\n",
+    );
+    let r = run(env
+        .cmd()
+        .args(["rules", "set", "--global", "jargon", "off"]));
+    assert_eq!(r.code, 0, "{}", r.stderr);
+    assert_eq!(
+        r.stderr,
+        "Set default/jargon to off in ~/.config/proserunner/config.toml.\n\
+         proserunner: .proserunner/config.toml sets default/jargon to error, and wins over ~/.config/proserunner/config.toml\n"
+    );
+    // A new user config starts with its schema.
+    let user = env.read(&format!("{}/config.toml", Env::CONFIG));
+    assert!(user.contains("\nschema = 1\n"), "{user}");
+
+    env.write(".proserunner/config.toml", "schema = 1\ninherit = false\n");
+    let r = run(env
+        .cmd()
+        .args(["rules", "set", "--global", "hedging", "off"]));
+    assert!(
+        r.stderr.ends_with(
+            "proserunner: config here sets `inherit = false`, which leaves ~/.config/proserunner/config.toml out\n"
+        ),
+        "{}",
+        r.stderr
+    );
+}
+
+#[test]
+fn extends_builds_on_shared_configs() {
+    let env = Env::new();
+    env.write(
+        "org/config.toml",
+        "schema = 1\naccept = [\"synergy\"]\n[rule.\"default/*\"]\nlevel = \"hint\"\n",
+    );
+    env.write(
+        "house/config.toml",
+        "schema = 1\nextends = [\"../org/config.toml\"]\n\
+         rules = [\"default\", { path = \"rules\", prefix = \"house\" }]\n\
+         [rule.\"default/compression\"]\nlevel = \"error\"\n",
+    );
+    env.write(
+        "house/rules/terms.toml",
+        "schema = 1\nterms = [\"GitHub\"]\n[examples]\nbad = [\"On Github.\"]\n",
+    );
+    // Org comes twice, and stays only below house, which extends it.
+    env.write(
+        "site/.proserunner/config.toml",
+        "schema = 1\nextends = [\"../house/config.toml\", \"../org/config.toml\"]\n\
+         rules = [\"default\", { path = \".proserunner/rules\", prefix = \"project\" }]\n",
+    );
+    fs::create_dir_all(env.path("site/.proserunner/rules")).unwrap();
+    env.write(
+        "site/doc.md",
+        "We utilize synergy on Github due to the fact that it works.\n",
+    );
+    let r = run(env.cmd_in("site").args(["doc.md", "-o", "plain"]));
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert_eq!(
+        r.stdout,
+        "doc.md:1:4: [1] \"utilize\" -> Prefer: use. (default/needless-variants)\n\
+         doc.md:1:23: [2] \"Github\" -> Prefer: GitHub. (house/terms)\n\
+         doc.md:1:30: [3] \"due to the fact that\" -> Prefer: because, since, why. (default/compression)\n"
+    );
+    let levels = rules_found(&env, &["site/doc.md"]);
+    assert_eq!(levels.len(), 3);
+    // Files outside the working directory and home show in full.
+    let root = fs::canonicalize(env.root()).unwrap();
+    let r = run(env.cmd_in("site").arg("config"));
+    let shown = r.stdout.replace(&root.display().to_string(), "[ROOT]");
+    assert!(
+        shown.starts_with(
+            "# Merged from: [ROOT]/org/config.toml, [ROOT]/house/config.toml, .proserunner/config.toml\n"
+        ),
+        "{shown}"
+    );
+    assert!(
+        shown.contains(
+            "rules = [\"default\", { path = \"[ROOT]/house/rules\", prefix = \"house\" }, { path = \".proserunner/rules\", prefix = \"project\" }]  # [ROOT]/house/config.toml, .proserunner/config.toml\n"
+        ),
+        "{shown}"
+    );
+}
+
+#[test]
+fn extends_mistakes_name_the_file() {
+    let env = Env::new();
+    env.write("doc.md", CLEAN);
+    let error = |config: &str| {
+        env.write(".proserunner/config.toml", config);
+        let r = run(env.cmd().arg("doc.md"));
+        assert_eq!(r.code, 2, "{}", r.stdout);
+        r.stderr
+    };
+    assert_eq!(
+        error("schema = 1\nextends = [\"missing.toml\"]\n"),
+        "proserunner: .proserunner/config.toml: extends missing.toml, which doesn't exist\n"
+    );
+    env.write("a.toml", "schema = 1\nextends = [\"b.toml\"]\n");
+    env.write("b.toml", "schema = 1\nextends = [\"a.toml\"]\n");
+    assert_eq!(
+        error("schema = 1\nextends = [\"a.toml\"]\n"),
+        "proserunner: b.toml: extends a.toml, which extends this one, so neither can be below the other\n"
+    );
+    env.write("c.toml", "schema = 1\ninherit = false\n");
+    assert!(
+        error("schema = 1\nextends = [\"c.toml\"]\n")
+            .starts_with("proserunner: c.toml: `inherit` can't be in a config another extends"),
+    );
+}
+
+#[test]
+fn source_patterns_set_every_rule_from_a_source() {
+    let env = Env::new();
+    env.write("dirty.md", DIRTY);
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\n[rule.\"default/*\"]\nlevel = \"off\"\n[rule.\"default/jargon\"]\nlevel = \"warning\"\n\
+         [rule.\"other/*\"]\nlevel = \"off\"\n",
+    );
+    // A rule's own table wins, and a source this run doesn't load is fine.
+    assert_eq!(rules_found(&env, &["dirty.md"]), ["default/jargon"]);
+    let r = run(env.cmd().args(["explain", "hedging"]));
+    assert!(
+        r.stdout
+            .contains("Level    off (set in .proserunner/config.toml, by [rule.\"default/*\"])"),
+        "{}",
+        r.stdout
+    );
+
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\n[rule.\"defualt/*\"]\nlevel = \"off\"\n",
+    );
+    let r = run(env.cmd().arg("dirty.md"));
+    assert_eq!(
+        r.stderr,
+        "proserunner: .proserunner/config.toml: no rules come from `defualt` (did you mean `default/*`?)\n"
+    );
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\n[rule.\"default/h*\"]\nlevel = \"off\"\n",
+    );
+    let r = run(env.cmd().arg("dirty.md"));
+    assert!(
+        r.stderr
+            .contains("`*` only stands for every rule from a source, as in `default/*`"),
+        "{}",
+        r.stderr
+    );
+}
+
+#[test]
+fn a_name_alone_gets_the_id_it_may_mean() {
+    let env = Env::new();
+    run(env.cmd().args(["init", "-q"]));
+    env.write(
+        ".proserunner/rules/house.toml",
+        "schema = 1\nmessage = \"m\"\nwords = [\"e-mail\"]\n[examples]\nbad = [\"e-mail\"]\n",
+    );
+    env.write(
+        "doc.md",
+        "An e-mail.\n\n<!-- proserunner-disable house -->\n",
+    );
+    let r = run(env.cmd().arg("doc.md"));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: doc.md:3:26: `house`: rule ids look like `source/name` (did you mean `project/house`?)\n"
+    );
+
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\nrules = [\"default\", { path = \".proserunner/rules\", prefix = \"project\" }]\n\
+         [rule.hedging]\nlevel = \"off\"\n",
+    );
+    // `config` checks ids as a check does.
+    let r = run(env.cmd().arg("config"));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: .proserunner/config.toml: `hedging`: rule ids look like `source/name` (did you mean `default/hedging`?)\n"
+    );
+}
+
+#[test]
+fn every_mistake_is_reported_at_once() {
+    let env = Env::new();
+    env.write("doc.md", CLEAN);
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\n[rule.\"default/hedgin\"]\nlevel = \"off\"\n[rule.jargn]\nlevel = \"off\"\n",
+    );
+    let r = run(env.cmd().arg("doc.md"));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        r.stderr,
+        "proserunner: .proserunner/config.toml: no rule has the id `default/hedgin` (did you mean `default/hedging`?)\n\
+         proserunner: .proserunner/config.toml: `jargn`: rule ids look like `source/name` (did you mean `default/jargon`?)\n"
+    );
+
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\nrules = [\"default\", { path = \"style\", prefix = \"style\" }]\n",
+    );
+    env.write(
+        "style/house.toml",
+        "schema = 1\nmessage = \"Say {sugestion}.\"\nwords = [{ match = \"e-mail\", suggest = [\"email\"] }, \"leverage\"]\npatterns = ['(a']\n",
+    );
+    let r = run(env.cmd().arg("doc.md"));
+    assert_eq!(r.code, 2);
+    let errors: Vec<&str> = r
+        .stderr
+        .lines()
+        .filter(|l| l.starts_with("proserunner: style/house.toml: "))
+        .collect();
+    assert_eq!(errors.len(), 2, "{}", r.stderr);
+    assert!(
+        errors[0].ends_with(
+            "unknown placeholder `{sugestion}` in message (did you mean `{suggestion}`?)"
+        ),
+        "{}",
+        r.stderr
+    );
+    assert!(errors[1].contains("invalid pattern `(a`"), "{}", r.stderr);
+    assert!(
+        r.stderr
+            .ends_with("proserunner: 1 rule file didn't load (see above)\n"),
+        "{}",
+        r.stderr
+    );
+}
+
+#[test]
+fn rules_set_edits_hand_written_tables_in_place() {
+    let env = Env::new();
+    env.write(
+        ".proserunner/config.toml",
+        "schema = 1\nrule.\"default/hedging\".level = \"error\"  # mine\n\
+         rule.\"default/jargon\" = { accept = [\"x\"] }\n\
+         [rule.\"default/cliches\"]\nlevel   = \"hint\"   # aligned\n",
+    );
+    for (rule, level) in [("hedging", "off"), ("jargon", "hint"), ("cliches", "off")] {
+        let r = run(env.cmd().args(["rules", "set", rule, level]));
+        assert_eq!(r.code, 0, "{}", r.stderr);
+    }
+    assert_eq!(
+        env.read(".proserunner/config.toml"),
+        "schema = 1\nrule.\"default/hedging\".level = \"off\"  # mine\n\
+         rule.\"default/jargon\" = { accept = [\"x\"], level = \"hint\" }\n\
+         [rule.\"default/cliches\"]\nlevel   = \"off\"   # aligned\n"
+    );
+    // A file that doesn't parse is never written.
+    env.write(".proserunner/config.toml", "schema = 1\nrule = 3\n");
+    let r = run(env.cmd().args(["rules", "set", "hedging", "off"]));
+    assert_eq!(r.code, 2);
+    assert_eq!(
+        env.read(".proserunner/config.toml"),
+        "schema = 1\nrule = 3\n"
     );
 }

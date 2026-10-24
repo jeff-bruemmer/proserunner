@@ -44,8 +44,14 @@ rules = ["default", "~/writing/rules", { path = ".proserunner/rules", prefix = "
 
 A directory's rules get ids that start with the directory's name, or
 with `prefix` when you give one. `proserunner init` sets up
-`.proserunner/rules/` with the prefix `project`. To start from the
-built-ins, `proserunner rules export DIR` copies them into `DIR`.
+`.proserunner/rules/` with the prefix `project`.
+
+To start from the built-ins, `proserunner rules export DIR` copies them
+into `DIR`, and `proserunner rules export DIR hedging` copies one. It
+says how to use the copies. A copy that runs alongside the built-in it
+came from reports each issue twice, so a run warns about two rules with
+the same text that are both on: use the copy in place of the built-in,
+or turn one off.
 
 ## Keys
 
@@ -73,8 +79,10 @@ built-ins, `proserunner rules export DIR` copies them into `DIR`.
 
 A rule needs `words`, `patterns`, `terms` or a check. An unknown key, an unknown `scope` or `level`, an invalid pattern, or a
 message that can't be filled in is an error that names the file (and the
-line and column, for a TOML mistake). A rule file with an error is left
-out of the run with a warning, and the other rules still run.
+line and column, for a TOML mistake). Each mistake in a file is
+reported, not only the first, except a TOML mistake, since nothing after
+it can be read. A rule file with an error is left out of the run with a
+warning, and the other rules still run.
 
 ## Words
 
@@ -104,7 +112,8 @@ expression, so `etc.` and `C++` mean exactly what they say.
 A `patterns` entry is a regular expression in
 [Rust's syntax](https://docs.rs/regex/latest/regex/#syntax), used exactly
 as written. Nothing is added, so write `\b` where you want a word
-boundary. With `case = "insensitive"`, `(?i)` goes in front.
+boundary. With `case = "insensitive"`, `(?i)` goes in front, unless the
+pattern starts with it.
 
 Patterns match the text as the rules see it (see
 [File formats](formats.md)): markup is gone, whitespace is one space, and
@@ -456,6 +465,18 @@ A rule with no `bad` example is reported too, since nothing shows that it
 matches. Problems are printed one per line, and the exit status is 1 when
 there are any. The built-in rules' examples run in `cargo test`.
 
+Examples show that a rule matches; a check of your own documents shows
+what else it matches. `--rule` keeps one rule's issues:
+
+```console
+$ proserunner docs/ --rule project/house-style
+```
+
+It takes an id, a name only one rule has, or `source/*`, and it repeats.
+`--show-suppressed` adds what config, ignore lists and inline control
+hide, each with what hid it, so a rule that seems to miss a match can
+be told from one that's turned off for it.
+
 ## `explain`
 
 `proserunner explain RULE` takes an id, or a rule's name alone when only
@@ -470,4 +491,6 @@ one rule has it. It shows:
 - the examples;
 - every `except`, `accept` and ignore that keeps the rule's issues from
   being reported, with the file it's in;
-- the `[[overrides]]` that change the rule.
+- the `[[overrides]]` that change the rule;
+- the config that turns it off, and the `rules set` command that writes
+  it.

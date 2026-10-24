@@ -460,7 +460,11 @@ fn render_ignores(from: &str, accept: &[String], issues: &[Entry]) -> String {
     out
 }
 
-/// The built-in rules by name and by file stem.
+/// Built-in rules that 0.8 called something else, by their 0.8 name.
+const RENAMED: [(&str, &str); 1] = [("regex", "default/heading-periods")];
+
+/// The built-in rules by name and by file stem, and by 0.8 name where
+/// that differs.
 fn builtin_names() -> HashMap<String, String> {
     let set = RuleSet::compile(rules::builtin()).rules;
     let mut names = HashMap::new();
@@ -469,6 +473,9 @@ fn builtin_names() -> HashMap<String, String> {
         if let Some(stem) = rule.id.strip_prefix("default/") {
             names.insert(name_key(stem), rule.id.clone());
         }
+    }
+    for (old, id) in RENAMED {
+        names.insert(name_key(old), id.to_owned());
     }
     names
 }
@@ -614,6 +621,10 @@ mod tests {
         assert_eq!(
             names.get("jargon").map(String::as_str),
             Some("default/jargon")
+        );
+        assert_eq!(
+            names.get("regex").map(String::as_str),
+            Some("default/heading-periods")
         );
     }
 }

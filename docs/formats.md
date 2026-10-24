@@ -277,9 +277,10 @@ proserunner-disable-next-line [ids…]   rules off on the next line only
   one the comment ends on, so put it directly above the line.
 - **Mistakes:** a misspelled directive, or an id of a rule from a source
   this run loads that names no rule, stops the run with an error at the
-  directive's file, line and column. An id from a source that isn't
-  loaded, such as `project/…` checked outside the project, is left alone,
-  as it is in config.
+  directive's file, line and column. So does a name without its source,
+  such as `hedging`, and the error names the ids it may mean. An id from
+  a source that isn't loaded, such as `project/…` checked outside the
+  project, is left alone, as it is in config.
 
 ## JSON output
 
@@ -317,6 +318,12 @@ proserunner-disable-next-line [ids…]   rules off on the next line only
   such as one for inline code, is U+001A here; the other formats show
   it as `…`.
 - **`number`:** what `--ignore-issues` takes.
+- **`suppressed`:** with `--show-suppressed`, the issues that config,
+  ignore lists and inline control hid, after `issues`. Each has no
+  `number`, and has `hidden_by`, one of `directive`, `off`, `accepted` and
+  `ignored`, and `reason`, which says what hid it, for people:
+  `"accepted in .proserunner/config.toml"`. Without the flag, there's no
+  `suppressed`.
 - **`version`:** goes up only when a field changes meaning or goes away.
 
 SARIF output counts columns in UTF-16 code units, as SARIF requires.

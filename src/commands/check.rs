@@ -8,11 +8,13 @@ use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use proserunner::config;
 use proserunner::ctx::Ctx;
+use proserunner::format::Output;
 use proserunner::ignores::{self, Entry};
 use proserunner::lint::Exhausted;
 use proserunner::report::{self, Document, LineIndex, Position, Report};
-use proserunner::rules::{Level, RuleSet};
+use proserunner::rules::{Level, RuleIndex, RuleSet};
 use proserunner::scan::{Format, Mask, Options};
 use proserunner::walk::{self, Filters, FormatOf, Input};
 use proserunner::{Error, Result, lint};
@@ -55,12 +57,20 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
         .iter()
         .chain(&args.stdin_filename)
         .map(PathBuf::as_path);
-    let setup = setup::setup(
+    let mut setup = setup::setup(
         ctx,
         ctx.project_for(checked)?,
         config_file,
         !args.no_ignores,
     )?;
+    let output = args.output.unwrap_or(setup.config.output.value);
+    if args.show_suppressed && !SHOWS_SUPPRESSED.contains(&output) {
+        return Err(Error::Usage(format!(
+            "--show-suppressed works with -o group, plain and json, not -o {output}"
+        )));
+    }
+    setup.policy.set_keep_suppressed(args.show_suppressed);
+    let only = only_rules(&setup.rules, &args.rules)?;
     let config = &setup.config;
     let mask = Mask::try_new(config.mask.iter().map(|m| &m.value)).map_err(Error::Usage)?;
     let mut options = Options::default();
@@ -92,10 +102,18 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
         eprintln!("Reading from standard input; press Ctrl-D to finish.");
     }
 
+    let lint = Lint {
+        ctx,
+        setup: &setup,
+        stdin: &stdin,
+        options,
+        named: &walk.named,
+        only: only.as_ref(),
+    };
     let read: Vec<Read> = walk
         .inputs
         .par_iter()
-        .map(|input| read_and_lint(ctx, &setup, input, &stdin, options, &walk.named))
+        .map(|input| lint.read(input))
         .collect::<Result<_>>()?;
     let mut documents = Vec::with_capacity(read.len());
     for r in read {
@@ -121,7 +139,6 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
 
     let report = report::build(&setup.rules, &documents);
     last_run::save(ctx, &key, &report);
-    let output = args.output.unwrap_or(config.output.value);
     if output.has_styles() && console::wants_styles() {
         console::styled_stdout(|out| format::write_styled(out, &report, output, &ctx.cwd))?;
     } else {
@@ -147,6 +164,27 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
     Ok(if fails { EXIT_ISSUES } else { EXIT_OK })
 }
 
+/// The output formats that show hidden issues.
+const SHOWS_SUPPRESSED: [Output; 3] = [Output::Group, Output::Plain, Output::Json];
+
+/// The rules whose issues `--rule` keeps, or `None` to keep every rule's.
+/// Each is an id, a name only one rule has, or `source/*`.
+fn only_rules(rules: &RuleSet, queries: &[String]) -> Result<Option<HashSet<RuleIndex>>> {
+    if queries.is_empty() {
+        return Ok(None);
+    }
+    let mut only = HashSet::new();
+    for query in queries {
+        let chosen = match config::pattern_source(query) {
+            Some(source) => rules.find_source(source),
+            None => rules.find(query).map(|rule| vec![rule]),
+        };
+        let chosen = chosen.map_err(|m| Error::Usage(format!("--rule: {m}")))?;
+        only.extend(chosen.into_iter().map(|rule| rule.index));
+    }
+    Ok(Some(only))
+}
+
 /// Whether rule files didn't load, which makes the run an error, saying
 /// so when they didn't.
 fn broken_rules(setup: &Setup) -> bool {
@@ -159,15 +197,17 @@ fn broken_rules(setup: &Setup) -> bool {
     setup.broken_rules > 0
 }
 
-/// From this many issues, the summary names the rules that found the
-/// most, so a first run on a large project shows where to start.
+/// From this many issues, the summary names the rules and files that
+/// found the most, so a first run on a large project shows where to
+/// start: a rule to tune, or a file that isn't prose.
 const BUSIEST_FROM: usize = 20;
 
-/// How many rules it names.
+/// How many rules, and files, it names.
 const BUSIEST: usize = 5;
 
 /// What goes to standard error after the report: how many files and
-/// issues, by level, and in a long report, the rules that found the most.
+/// issues, by level, and in a long report, the rules and files that found
+/// the most.
 fn summary(report: &Report<'_>) -> Vec<String> {
     let levels: Vec<String> = [Level::Error, Level::Warning, Level::Hint]
         .into_iter()
@@ -181,28 +221,53 @@ fn summary(report: &Report<'_>) -> Vec<String> {
         report.issues.len(),
         &levels,
     )];
-    if report.issues.len() >= BUSIEST_FROM {
-        let busiest = busiest_rules(report);
-        let width = busiest
-            .first()
-            .map_or(0, |&(_, n)| english::number(n).len());
-        lines.push("The rules that found the most:".into());
-        for (id, n) in busiest {
-            lines.push(format!("  {:>width$}  {id}", english::number(n)));
-        }
+    let hidden = report.suppressed.len();
+    if hidden > 0 {
+        let are = if hidden == 1 { "is" } else { "are" };
+        lines.push(format!(
+            "{} that config, ignore lists or inline control hide {are} shown last.",
+            english::count(hidden, "issue")
+        ));
+    }
+    if report.issues.len() < BUSIEST_FROM {
+        return lines;
+    }
+    let rules = busiest(report.issues.iter().map(|i| i.rule.id.as_str()));
+    let files = busiest(report.issues.iter().map(|i| i.file));
+    // Counts line up across both lists.
+    let width = rules
+        .iter()
+        .chain(&files)
+        .map(|&(_, n)| english::number(n).len())
+        .max()
+        .unwrap_or(0);
+    let counted = |(name, n): (&str, usize)| format!("  {:>width$}  {name}", english::number(n));
+    lines.push("The rules that found the most:".into());
+    lines.extend(rules.into_iter().map(counted));
+    // One file holding them all says nothing a reader doesn't know.
+    let several_files = files.len() > 1;
+    if several_files {
+        lines.push("The files with the most:".into());
+        lines.extend(files.into_iter().map(counted));
+    }
+    lines.push(
+        "'proserunner explain RULE' shows what a rule matches and how to turn it off.".into(),
+    );
+    if several_files {
         lines.push(
-            "'proserunner explain RULE' shows what a rule matches and how to turn it off.".into(),
+            "A file that isn't prose can go in .proserunnerignore, or in check.exclude in config."
+                .into(),
         );
     }
     lines
 }
 
-/// The [`BUSIEST`] rules by how many issues each found, most first, and
-/// in id order on a tie.
-fn busiest_rules<'report>(report: &Report<'report>) -> Vec<(&'report str, usize)> {
+/// The [`BUSIEST`] names by how many issues each has, most first, and in
+/// name order on a tie.
+fn busiest<'report>(names: impl Iterator<Item = &'report str>) -> Vec<(&'report str, usize)> {
     let mut counts: HashMap<&str, usize> = HashMap::new();
-    for i in &report.issues {
-        *counts.entry(i.rule.id.as_str()).or_default() += 1;
+    for name in names {
+        *counts.entry(name).or_default() += 1;
     }
     let mut counts: Vec<(&str, usize)> = counts.into_iter().collect();
     counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
@@ -287,60 +352,86 @@ fn read_text(path: &Path, named: bool) -> Result<Result<String, String>> {
     }
 }
 
-fn read_and_lint(
-    ctx: &Ctx,
-    setup: &Setup,
-    input: &Input,
-    stdin: &Stdin,
-    options: Options<'_>,
-    named: &HashSet<PathBuf>,
-) -> Result<Read> {
-    use std::io::Read as _;
+/// What reading and linting each input needs.
+struct Lint<'run> {
+    ctx: &'run Ctx,
+    setup: &'run Setup,
+    stdin: &'run Stdin,
+    options: Options<'run>,
+    /// The files named on the command line, absolute.
+    named: &'run HashSet<PathBuf>,
+    /// The rules `--rule` keeps, if it was given.
+    only: Option<&'run HashSet<RuleIndex>>,
+}
 
-    let (display, path, source, format) = match input {
-        Input::Stdin => {
-            // A byte past the limit is enough to know it's too large.
-            let mut bytes = Vec::new();
-            io::stdin()
-                .take(walk::MAX_FILE_BYTES + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| Error::io(STDIN_NAME, e))?;
-            if bytes.len() as u64 > walk::MAX_FILE_BYTES {
-                return Err(Error::TooLarge(STDIN_NAME.into()));
+impl Lint<'_> {
+    /// Whether `--rule` keeps `rule`'s issues.
+    fn keeps(&self, rule: RuleIndex) -> bool {
+        self.only.is_none_or(|only| only.contains(&rule))
+    }
+
+    /// Reads, lints and applies the policy to one input.
+    fn read(&self, input: &Input) -> Result<Read> {
+        use std::io::Read as _;
+
+        let Lint {
+            ctx,
+            setup,
+            stdin,
+            options,
+            named,
+            ..
+        } = *self;
+        let (display, path, source, format) = match input {
+            Input::Stdin => {
+                // A byte past the limit is enough to know it's too large.
+                let mut bytes = Vec::new();
+                io::stdin()
+                    .take(walk::MAX_FILE_BYTES + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| Error::io(STDIN_NAME, e))?;
+                if bytes.len() as u64 > walk::MAX_FILE_BYTES {
+                    return Err(Error::TooLarge(STDIN_NAME.into()));
+                }
+                let source =
+                    String::from_utf8(bytes).map_err(|_| Error::NotText(STDIN_NAME.into()))?;
+                (
+                    stdin.display.clone(),
+                    stdin.path.clone(),
+                    source,
+                    stdin.format,
+                )
             }
-            let source = String::from_utf8(bytes).map_err(|_| Error::NotText(STDIN_NAME.into()))?;
-            (
-                stdin.display.clone(),
-                stdin.path.clone(),
-                source,
-                stdin.format,
-            )
-        }
-        Input::File { path, format } => {
-            let absolute = ctx.absolute(path);
-            let source = match read_text(path, named.contains(&absolute))? {
-                Ok(source) => source,
-                Err(why) => return Ok(Read::Skipped(why)),
-            };
-            (ctx.display(path), Some(absolute), source, *format)
-        }
-    };
-    let linted = lint::document(&setup.rules, format, &source, options);
-    let applied = setup
-        .policy
-        .apply(path.as_deref(), &source, linted)
-        .map_err(|e| {
-            let at = LineIndex::new(&source).position(&source, e.at);
-            Error::Control {
-                origin: format!("{display}:{}:{}", at.line, at.column),
-                message: e.message,
+            Input::File { path, format } => {
+                let absolute = ctx.absolute(path);
+                let source = match read_text(path, named.contains(&absolute))? {
+                    Ok(source) => source,
+                    Err(why) => return Ok(Read::Skipped(why)),
+                };
+                (ctx.display(path), Some(absolute), source, *format)
             }
-        })?;
-    let warnings = exhausted_warnings(&setup.rules, &display, &source, &applied.exhausted);
-    Ok(Read::Linted(
-        Document::new(display, path, source, applied.issues),
-        warnings,
-    ))
+        };
+        let linted = lint::document(&setup.rules, format, &source, options);
+        let mut applied = setup
+            .policy
+            .apply(path.as_deref(), &source, linted)
+            .map_err(|e| {
+                let at = LineIndex::new(&source).position(&source, e.at);
+                Error::Control {
+                    origin: format!("{display}:{}:{}", at.line, at.column),
+                    message: e.message,
+                }
+            })?;
+        if self.only.is_some() {
+            applied.issues.retain(|i| self.keeps(i.rule));
+            applied.exhausted.retain(|e| self.keeps(e.rule));
+            applied.suppressed.retain(|s| self.keeps(s.issue.rule));
+        }
+        let warnings = exhausted_warnings(&setup.rules, &display, &source, &applied.exhausted);
+        let mut document = Document::new(display, path, source, applied.issues);
+        document.suppressed = applied.suppressed;
+        Ok(Read::Linted(document, warnings))
+    }
 }
 
 /// One warning for each pattern that gave up in a file, at the first block

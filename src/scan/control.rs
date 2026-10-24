@@ -162,43 +162,54 @@ fn action(word: &Word) -> Result<Action, ControlError> {
     }
 }
 
-/// Which rules are off at a point. Either every rule is on except those in
+/// Which rules are off at a point, and the directive that turned each
+/// off, by where it starts. Either every rule is on except those in
 /// `toggled`, or (`all_off`) every rule is off except those in `toggled`.
 #[derive(Debug, Clone)]
 struct State<R> {
-    all_off: bool,
-    /// Sorted.
-    toggled: Vec<R>,
+    all_off: Option<usize>,
+    /// Sorted by rule; each with the directive that toggled it.
+    toggled: Vec<(R, usize)>,
 }
 
 impl<R> Default for State<R> {
     fn default() -> Self {
         State {
-            all_off: false,
+            all_off: None,
             toggled: Vec::new(),
         }
     }
 }
 
 impl<R: Copy + Ord> State<R> {
-    fn is_off(&self, rule: R) -> bool {
-        self.all_off != self.toggled.binary_search(&rule).is_ok()
+    /// Where the directive that turned `rule` off starts, if it's off.
+    fn off_by(&self, rule: R) -> Option<usize> {
+        let toggled = self
+            .toggled
+            .binary_search_by_key(&rule, |&(r, _)| r)
+            .ok()
+            .map(|i| self.toggled[i].1);
+        match self.all_off {
+            Some(at) => toggled.is_none().then_some(at),
+            None => toggled,
+        }
     }
 
-    /// Turns `rules` (`None`: every rule) off or on.
-    fn set(&mut self, rules: Option<&[R]>, off: bool) {
+    /// Turns `rules` (`None`: every rule) off or on, by the directive that
+    /// starts at `at`.
+    fn set(&mut self, rules: Option<&[R]>, off: bool, at: usize) {
         let Some(rules) = rules else {
-            self.all_off = off;
+            self.all_off = off.then_some(at);
             self.toggled.clear();
             return;
         };
-        let toggle = off != self.all_off;
+        let toggle = off != self.all_off.is_some();
         for &r in rules {
-            match (self.toggled.binary_search(&r), toggle) {
+            match (self.toggled.binary_search_by_key(&r, |&(t, _)| t), toggle) {
                 (Ok(i), false) => {
                     self.toggled.remove(i);
                 }
-                (Err(i), true) => self.toggled.insert(i, r),
+                (Err(i), true) => self.toggled.insert(i, (r, at)),
                 _ => {}
             }
         }
@@ -212,8 +223,8 @@ pub(crate) struct Control<R> {
     /// From each offset on, until the next, the state that holds.
     changes: Vec<(usize, State<R>)>,
     /// Lines that `disable-next-line` covers, with its rules (`None`:
-    /// every rule).
-    lines: Vec<(Range<usize>, Option<Vec<R>>)>,
+    /// every rule) and where the directive starts.
+    lines: Vec<(Range<usize>, Option<Vec<R>>, usize)>,
 }
 
 impl<R: Copy + Ord> Control<R> {
@@ -238,12 +249,6 @@ impl<R: Copy + Ord> Control<R> {
             let mut rules = Vec::new();
             for id in &d.ids {
                 let fail = |message: String| ControlError { at: id.at, message };
-                if !id.text.contains('/') {
-                    return Err(fail(format!(
-                        "`{}`: rule ids look like `source/name`, such as `default/hedging`",
-                        id.text
-                    )));
-                }
                 rules.extend(find(&id.text).map_err(fail)?);
             }
             if !d.ids.is_empty() && rules.is_empty() {
@@ -252,11 +257,13 @@ impl<R: Copy + Ord> Control<R> {
             let named = (!d.ids.is_empty()).then_some(rules);
             match action {
                 Action::Disable | Action::Enable => {
-                    state.set(named.as_deref(), action == Action::Disable);
+                    state.set(named.as_deref(), action == Action::Disable, d.action.at);
                     control.changes.push((d.end, state.clone()));
                 }
                 Action::DisableNextLine => {
-                    control.lines.push((next_line(source, d.end), named));
+                    control
+                        .lines
+                        .push((next_line(source, d.end), named, d.action.at));
                 }
             }
         }
@@ -265,15 +272,21 @@ impl<R: Copy + Ord> Control<R> {
 
     /// Whether `rule` is on at source offset `at`.
     pub(crate) fn allows(&self, rule: R, at: usize) -> bool {
+        self.off_by(rule, at).is_none()
+    }
+
+    /// Where the directive that turns `rule` off at source offset `at`
+    /// starts, or `None` when it's on there.
+    pub(crate) fn off_by(&self, rule: R, at: usize) -> Option<usize> {
+        let skipped_line = self.lines.iter().find_map(|(line, rules, by)| {
+            (line.contains(&at) && rules.as_ref().is_none_or(|r| r.contains(&rule))).then_some(*by)
+        });
         let i = self.changes.partition_point(|(from, _)| *from <= at);
         let off = i
             .checked_sub(1)
             .and_then(|i| self.changes.get(i))
-            .is_some_and(|(_, state)| state.is_off(rule));
-        let on_skipped_line = self.lines.iter().any(|(line, rules)| {
-            line.contains(&at) && rules.as_ref().is_none_or(|r| r.contains(&rule))
-        });
-        !off && !on_skipped_line
+            .and_then(|(_, state)| state.off_by(rule));
+        skipped_line.or(off)
     }
 }
 
@@ -389,10 +402,33 @@ mod tests {
             e.message,
             "`proserunner-disabel` isn't a directive (did you mean `proserunner-disable`?)"
         );
+        // The resolver judges every id, short ones too, and its error
+        // points at the id.
         let e = resolve(src, &[directive("proserunner-disable hedging").unwrap()]).unwrap_err();
-        assert!(e.message.contains("source/name"), "{}", e.message);
+        assert_eq!(e.message, "no rule has the id `hedging`");
         assert_eq!(e.at, 20);
         let e = resolve(src, &[directive("proserunner-enable t/zz").unwrap()]).unwrap_err();
         assert_eq!(e.message, "no rule has the id `t/zz`");
+    }
+
+    #[test]
+    fn off_by_names_the_directive_that_turned_a_rule_off() {
+        let src = "[D] a [E-b] b [N]\nc\nd";
+        let c = resolve(
+            src,
+            &[
+                at(src, "proserunner-disable", "[D]"),
+                at(src, "proserunner-enable t/b", "[E-b]"),
+                at(src, "  proserunner-disable-next-line t/b", "[N]"),
+            ],
+        )
+        .unwrap();
+        // Each directive is parsed alone, so it starts where its text
+        // does: 0, and 2 after the spaces.
+        let pos = |w: &str| src.find(w).unwrap();
+        assert_eq!(c.off_by(0, pos(" b ")), Some(0));
+        assert_eq!(c.off_by(1, pos(" b ")), None);
+        assert_eq!(c.off_by(1, pos("c")), Some(2));
+        assert_eq!(c.off_by(1, pos("d")), None);
     }
 }

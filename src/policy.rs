@@ -4,15 +4,16 @@
 //! Filtering after matching means turning a rule off, or accepting one of
 //! its matches, never changes what another rule finds.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::config::{Config, Paths, RuleSettings, Setting};
+use crate::config::{self, Config, Paths, RuleSettings, Setting, Sourced};
+use crate::english;
 use crate::error::{Error, Result};
 use crate::ignores::{self, Ignored, Ignores};
 use crate::lint::{Exhausted, Issue, Linted};
 use crate::report::LineIndex;
-use crate::rules::{Level, RuleIndex, RuleSet};
+use crate::rules::{self, Level, RuleIndex, RuleSet};
 use crate::scan::{Control, ControlError};
 use crate::typo;
 
@@ -23,14 +24,17 @@ pub struct Policy {
     /// Per rule: its own level, for when config sets none.
     own: Vec<Level>,
     /// Per rule: the level config sets, which replaces the rule's and its
-    /// entries', or `off`.
-    levels: Vec<Option<Setting>>,
-    /// Per rule: accepted match keys.
-    rule_accept: Vec<HashSet<String>>,
-    /// Match keys accepted for every rule.
-    accept: HashSet<String>,
+    /// entries', or `off`, with the file that set it.
+    levels: Vec<Option<Sourced<Setting>>>,
+    /// Per rule: accepted match keys, each with the file that accepts it.
+    rule_accept: Vec<HashMap<String, String>>,
+    /// Match keys accepted for every rule, each with the file that
+    /// accepts it.
+    accept: HashMap<String, String>,
     overrides: Vec<Scoped>,
     ignored: HashMap<PathBuf, Vec<Ignored>>,
+    /// Whether [`Policy::apply`] keeps what it hides.
+    keep_suppressed: bool,
 }
 
 /// Rule ids, and the rule sources this run loads.
@@ -47,9 +51,10 @@ struct Ids {
 impl Ids {
     /// The rule `id` names. An id from a loaded source that names no rule
     /// is an error (a typo would otherwise do nothing), and so is one a
-    /// typo away from a loaded rule (`defualt/hedging`). An id from a
-    /// source this run doesn't load is `None`, since a project may choose
-    /// its own rules, and so is a rule whose file didn't compile.
+    /// typo away from a loaded rule (`defualt/hedging`), or a name with no
+    /// source (`hedging`). An id from a source this run doesn't load is
+    /// `None`, since a project may choose its own rules, and so is a rule
+    /// whose file didn't compile.
     fn find(&self, id: &str) -> Result<Option<RuleIndex>, String> {
         if let Some(&i) = self.index.get(id) {
             return Ok(Some(i));
@@ -57,8 +62,10 @@ impl Ids {
         if self.left_out.contains(id) {
             return Ok(None);
         }
+        let Some((prefix, _)) = id.split_once('/') else {
+            return Err(self.not_an_id(id));
+        };
         let ids = || self.ids.iter().map(String::as_str);
-        let prefix = id.split('/').next().unwrap_or(id);
         if !self.prefixes.contains(prefix) {
             return match typo::closest_within(id, ids(), 2) {
                 Some(c) => Err(format!(
@@ -72,21 +79,105 @@ impl Ids {
             .unwrap_or_default();
         Err(format!("no rule has the id `{id}`{hint}"))
     }
+
+    /// Why `name`, which has no source, isn't an id, with the ids it may
+    /// mean: those of the rules with that name, or of the closest name.
+    fn not_an_id(&self, name: &str) -> String {
+        let ids = || self.ids.iter().map(String::as_str);
+        // A name a rule has is the closest to itself.
+        let named: Vec<String> = typo::closest(name, ids().map(rules::id_name))
+            .map(|close| {
+                ids()
+                    .filter(|id| rules::id_name(id) == close)
+                    .map(|id| format!("`{id}`"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let hint = if named.is_empty() {
+            ", such as `default/hedging`".to_owned()
+        } else {
+            format!(" (did you mean {}?)", english::or_list(&named))
+        };
+        format!("`{name}`: rule ids look like `source/name`{hint}")
+    }
+
+    /// Checks a `[rule."…"]` key: an id as [`Ids::find`] does, or a
+    /// `source/*` pattern, whose source may be one this run doesn't load,
+    /// unless it's a typo away from one it does.
+    fn check_key(&self, key: &str) -> Result<(), String> {
+        let Some(source) = config::pattern_source(key) else {
+            return self.find(key).map(|_| ());
+        };
+        if self.prefixes.contains(source) {
+            return Ok(());
+        }
+        match typo::closest_within(source, self.prefixes.iter().map(String::as_str), 2) {
+            Some(c) => Err(format!(
+                "no rules come from `{source}` (did you mean `{c}/*`?)"
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// Adds an error to `errors` for each key of `tables` that
+    /// [`Ids::check_key`] rejects, naming the file it's in.
+    fn check_keys<'a>(
+        &self,
+        tables: &'a BTreeMap<String, RuleSettings>,
+        origin: impl Fn(&'a RuleSettings) -> &'a str,
+        errors: &mut Vec<Error>,
+    ) {
+        for (key, settings) in tables {
+            if let Err(m) = self.check_key(key) {
+                errors.push(Error::config(origin(settings), m));
+            }
+        }
+    }
 }
 
 /// An `[[overrides]]` entry, with rule ids resolved.
 #[derive(Debug)]
 struct Scoped {
     paths: Paths,
+    /// The file it's in, as shown.
+    origin: String,
     accept: HashSet<String>,
     levels: HashMap<RuleIndex, Setting>,
     rule_accept: HashMap<RuleIndex, HashSet<String>>,
 }
 
+/// Why [`Policy::apply`] hid an issue, borrowing from the policy, so an
+/// issue it drops costs no copies.
+enum HiddenBy<'policy> {
+    Directive(usize),
+    Off(&'policy str),
+    Accepted(&'policy str),
+    Ignored(&'policy str),
+}
+
+impl HiddenBy<'_> {
+    fn to_suppression(&self) -> Suppression {
+        match *self {
+            HiddenBy::Directive(at) => Suppression::Directive { at },
+            HiddenBy::Off(origin) => Suppression::Off {
+                origin: origin.to_owned(),
+            },
+            HiddenBy::Accepted(origin) => Suppression::Accepted {
+                origin: origin.to_owned(),
+            },
+            HiddenBy::Ignored(origin) => Suppression::Ignored {
+                origin: origin.to_owned(),
+            },
+        }
+    }
+}
+
 impl Policy {
-    /// Checks every rule id the config names. An id from a loaded source
-    /// that names no rule is an error; one from a source this run doesn't
-    /// load, or of a rule file that didn't compile, is skipped.
+    /// Checks every rule id the config names, and reports each that's
+    /// wrong. An id from a loaded source that names no rule is an error;
+    /// one from a source this run doesn't load, or of a rule file that
+    /// didn't compile, is skipped. `[rule."source/*"]` sets every rule
+    /// from a source, and a rule's own table wins over it.
     pub fn try_new(config: &Config, rules: &RuleSet, ignores: Ignores) -> Result<Policy> {
         let ids = Ids {
             ids: rules.rules().iter().map(|r| r.id.clone()).collect(),
@@ -103,49 +194,59 @@ impl Policy {
                 .collect(),
             left_out: rules.left_out.iter().cloned().collect(),
         };
-        let find = |id: &str, origin: &str| ids.find(id).map_err(|m| Error::config(origin, m));
+        let mut errors = Vec::new();
+        ids.check_keys(&config.rule, origin, &mut errors);
+        for o in &config.overrides {
+            ids.check_keys(&o.rule, |_| o.origin.as_str(), &mut errors);
+        }
+        Error::all(errors)?;
 
-        let mut levels: Vec<Option<Setting>> = vec![None; rules.len()];
-        let mut rule_accept = vec![HashSet::new(); rules.len()];
-        for (id, settings) in &config.rule {
-            let Some(i) = find(id, origin(settings))? else {
-                continue;
-            };
-            let i = i.as_usize();
-            if let Some(level) = &settings.level {
-                levels[i] = Some(level.value);
-            }
-            rule_accept[i].extend(settings.accept.iter().map(|a| ignores::key(&a.value)));
+        let mut levels = Vec::with_capacity(rules.len());
+        let mut rule_accept = Vec::with_capacity(rules.len());
+        for rule in rules.rules() {
+            let settings = config.rule_settings(&rule.id);
+            levels.push(settings.level);
+            rule_accept.push(
+                settings
+                    .accept
+                    .into_iter()
+                    .map(|a| (ignores::key(&a.value), a.origin))
+                    .collect(),
+            );
         }
 
         let mut overrides = Vec::new();
         for o in &config.overrides {
             let mut scoped = Scoped {
                 paths: o.paths.clone(),
+                origin: o.origin.clone(),
                 accept: o.accept.iter().map(|a| ignores::key(a)).collect(),
                 levels: HashMap::new(),
                 rule_accept: HashMap::new(),
             };
-            for (id, settings) in &o.rule {
-                let Some(i) = find(id, &o.origin)? else {
-                    continue;
-                };
-                if let Some(level) = &settings.level {
-                    scoped.levels.insert(i, level.value);
+            for rule in rules.rules() {
+                let settings = o.rule_settings(&rule.id);
+                if let Some(level) = settings.level {
+                    scoped.levels.insert(rule.index, level.value);
                 }
-                scoped
-                    .rule_accept
-                    .entry(i)
-                    .or_default()
-                    .extend(settings.accept.iter().map(|a| ignores::key(&a.value)));
+                if !settings.accept.is_empty() {
+                    scoped.rule_accept.insert(
+                        rule.index,
+                        settings
+                            .accept
+                            .iter()
+                            .map(|a| ignores::key(&a.value))
+                            .collect(),
+                    );
+                }
             }
             overrides.push(scoped);
         }
 
-        let mut accept: HashSet<String> = config
+        let mut accept: HashMap<String, String> = config
             .accept
             .iter()
-            .map(|a| ignores::key(&a.value))
+            .map(|a| (ignores::key(&a.value), a.origin.clone()))
             .collect();
         accept.extend(ignores.accept);
         Ok(Policy {
@@ -156,24 +257,93 @@ impl Policy {
             accept,
             overrides,
             ignored: ignores.issues,
+            keep_suppressed: false,
         })
+    }
+
+    /// Whether [`Policy::apply`] keeps the issues it hides, with why, in
+    /// [`Applied::suppressed`]. It doesn't by default, since that costs a
+    /// copy of each one.
+    pub fn set_keep_suppressed(&mut self, keep: bool) {
+        self.keep_suppressed = keep;
     }
 
     /// A rule's level outside any override, or `None` when it's off.
     pub fn level(&self, rule: RuleIndex) -> Option<Level> {
-        match self.levels.get(rule.as_usize()).copied().flatten() {
-            Some(set) => set.level(),
+        match self.levels.get(rule.as_usize()).and_then(Option::as_ref) {
+            Some(set) => set.value.level(),
             None => self.own.get(rule.as_usize()).copied(),
         }
     }
 
     /// The level config sets for a rule under the overrides `here`, the
-    /// last one that sets it winning; `None` when config sets none.
-    fn setting_here(&self, here: &[&Scoped], rule: RuleIndex) -> Option<Setting> {
+    /// last one that sets it winning, with the file that set it; `None`
+    /// when config sets none.
+    fn setting_here<'p>(
+        &'p self,
+        here: &[&'p Scoped],
+        rule: RuleIndex,
+    ) -> Option<(Setting, &'p str)> {
         here.iter()
             .rev()
-            .find_map(|o| o.levels.get(&rule).copied())
-            .or_else(|| self.levels.get(rule.as_usize()).copied().flatten())
+            .find_map(|o| Some((*o.levels.get(&rule)?, o.origin.as_str())))
+            .or_else(|| {
+                let set = self.levels.get(rule.as_usize())?.as_ref()?;
+                Some((set.value, set.origin.as_str()))
+            })
+    }
+
+    /// The file that accepts match key `k` for `rule` under the overrides
+    /// `here`, if one does.
+    fn accepted_by<'p>(&'p self, here: &[&'p Scoped], rule: RuleIndex, k: &str) -> Option<&'p str> {
+        self.accept
+            .get(k)
+            .or_else(|| self.rule_accept.get(rule.as_usize())?.get(k))
+            .map(String::as_str)
+            .or_else(|| {
+                here.iter()
+                    .find(|o| {
+                        o.accept.contains(k)
+                            || o.rule_accept.get(&rule).is_some_and(|a| a.contains(k))
+                    })
+                    .map(|o| o.origin.as_str())
+            })
+    }
+
+    /// What hides `issue` under the overrides `here`, if anything: inline
+    /// control, a level of `off`, `accept`, or an ignore in `ignored`, the
+    /// file's, the first of these that does. `setting` is what
+    /// [`Policy::setting_here`] gives for its rule. `line` is the issue's
+    /// line, which only an ignore with a `line` needs.
+    fn hidden_by<'p>(
+        &'p self,
+        issue: &Issue,
+        setting: Option<(Setting, &'p str)>,
+        control: &Control<RuleIndex>,
+        here: &[&'p Scoped],
+        ignored: &'p [Ignored],
+        line: &dyn Fn() -> Option<usize>,
+    ) -> Option<HiddenBy<'p>> {
+        let r = issue.rule;
+        if let Some(at) = control.off_by(r, issue.span.start) {
+            return Some(HiddenBy::Directive(at));
+        }
+        if let Some((Setting::Off, origin)) = setting {
+            return Some(HiddenBy::Off(origin));
+        }
+        let k = ignores::key(&issue.matched);
+        if let Some(origin) = self.accepted_by(here, r, &k) {
+            return Some(HiddenBy::Accepted(origin));
+        }
+        let id = self.ids.ids.get(r.as_usize()).map(String::as_str);
+        ignored
+            .iter()
+            .find(|g| {
+                g.matched == k
+                    && g.rule.as_deref().is_none_or(|rule| Some(rule) == id)
+                    && g.line.is_none_or(|n| Some(n) == line())
+            })
+            .map(|g| HiddenBy::Ignored(&g.origin))
     }
 
     /// What survives in the file at `path` (absolute; `None` for standard
@@ -211,49 +381,38 @@ impl Policy {
             .into_iter()
             .filter(|e| {
                 control.allows(e.rule, e.at)
-                    && self.setting_here(&here, e.rule) != Some(Setting::Off)
+                    && self.setting_here(&here, e.rule).map(|(set, _)| set) != Some(Setting::Off)
             })
             .collect();
         let mut issues = Vec::with_capacity(linted.issues.len());
+        let mut suppressed = Vec::new();
         for mut issue in linted.issues {
-            let r = issue.rule;
-            if !control.allows(r, issue.span.start) {
-                continue;
-            }
-            let level = match self.setting_here(&here, r) {
-                Some(set) => match set.level() {
-                    Some(level) => level,
-                    None => continue,
-                },
-                None => issue.level,
-            };
-            let k = ignores::key(&issue.matched);
-            let accepted = self.accept.contains(&k)
-                || self
-                    .rule_accept
-                    .get(r.as_usize())
-                    .is_some_and(|a| a.contains(&k))
-                || here.iter().any(|o| {
-                    o.accept.contains(&k) || o.rule_accept.get(&r).is_some_and(|a| a.contains(&k))
-                });
-            let id = self.ids.ids.get(r.as_usize()).map(String::as_str);
             let line = || {
                 lines
                     .as_ref()
                     .map(|l| l.position(source, issue.span.start).line)
             };
-            let is_ignored = ignored.iter().any(|g| {
-                g.matched == k
-                    && g.rule.as_deref().is_none_or(|rule| Some(rule) == id)
-                    && g.line.is_none_or(|n| Some(n) == line())
-            });
-            if accepted || is_ignored {
+            let setting = self.setting_here(&here, issue.rule);
+            let hidden_by = self.hidden_by(&issue, setting, &control, &here, ignored, &line);
+            if hidden_by.is_some() && !self.keep_suppressed {
                 continue;
             }
-            issue.level = level;
-            issues.push(issue);
+            if let Some(level) = setting.and_then(|(set, _)| set.level()) {
+                issue.level = level;
+            }
+            match hidden_by {
+                None => issues.push(issue),
+                Some(why) => suppressed.push(Suppressed {
+                    issue,
+                    why: why.to_suppression(),
+                }),
+            }
         }
-        Ok(Applied { issues, exhausted })
+        Ok(Applied {
+            issues,
+            exhausted,
+            suppressed,
+        })
     }
 }
 
@@ -265,6 +424,59 @@ pub struct Applied {
     pub issues: Vec<Issue>,
     /// The patterns that gave up where their rule is on.
     pub exhausted: Vec<Exhausted>,
+    /// What it hid, with why, in source order, when
+    /// [`Policy::set_keep_suppressed`] asked for it; otherwise empty.
+    pub suppressed: Vec<Suppressed>,
+}
+
+/// An issue [`Policy::apply`] hid, and why.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Suppressed {
+    /// The issue, at its rule's own level, or the one config sets.
+    pub issue: Issue,
+    /// Why it wasn't reported.
+    pub why: Suppression,
+}
+
+/// Why an issue wasn't reported. When several things hide one, it's the
+/// first of these.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Suppression {
+    /// An inline control comment turned its rule off.
+    Directive {
+        /// Where the comment's directive starts in the source.
+        at: usize,
+    },
+    /// Config turned its rule off.
+    Off {
+        /// The file that did, as shown.
+        origin: String,
+    },
+    /// Config or an ignore list accepts its match.
+    Accepted {
+        /// The file that does, as shown.
+        origin: String,
+    },
+    /// An ignore list ignores it in this file.
+    Ignored {
+        /// The list, as shown.
+        origin: String,
+    },
+}
+
+impl Suppression {
+    /// Its kind, as JSON output names it: `directive`, `off`, `accepted`
+    /// or `ignored`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Suppression::Directive { .. } => "directive",
+            Suppression::Off { .. } => "off",
+            Suppression::Accepted { .. } => "accepted",
+            Suppression::Ignored { .. } => "ignored",
+        }
+    }
 }
 
 /// The file a `[rule."…"]` table came from.
@@ -320,6 +532,7 @@ mod tests {
             base: "/p".into(),
             within: Some("/p".into()),
             origin: "config.toml".into(),
+            group: 0,
             file: config::parse(text).unwrap(),
         };
         let config = config::merge(&ctx(), vec![layer])?;
@@ -375,6 +588,7 @@ mod tests {
                 base: "/p".into(),
                 within: Some("/p".into()),
                 origin: "config.toml".into(),
+                group: 0,
                 file: config::parse(config).unwrap(),
             };
             let config = config::merge(&ctx(), vec![layer]).unwrap();
@@ -477,9 +691,128 @@ mod tests {
     }
 
     #[test]
+    fn a_name_alone_gets_the_ids_it_may_mean() {
+        let e = |text: &str| policy(text, Ignores::default()).err().unwrap().to_string();
+        assert_eq!(
+            e("schema = 1\n[rule.hedging]\nlevel = \"off\""),
+            "config.toml: `hedging`: rule ids look like `source/name` (did you mean `default/hedging`?)"
+        );
+        assert_eq!(
+            e("schema = 1\n[rule.hedgin]\nlevel = \"off\""),
+            "config.toml: `hedgin`: rule ids look like `source/name` (did you mean `default/hedging`?)"
+        );
+        assert_eq!(
+            e("schema = 1\n[rule.zzz]\nlevel = \"off\""),
+            "config.toml: `zzz`: rule ids look like `source/name`, such as `default/hedging`"
+        );
+    }
+
+    #[test]
+    fn every_unknown_id_is_reported_at_once() {
+        let e = policy(
+            "schema = 1\n[rule.\"default/hedgin\"]\nlevel = \"off\"\n[rule.jargon]\nlevel = \"off\"\n\
+             [[overrides]]\npaths = [\"x/\"]\nrule.\"defualt/*\".level = \"off\"",
+            Ignores::default(),
+        )
+        .err()
+        .unwrap();
+        let lines: Vec<String> = e.each().iter().map(Error::to_string).collect();
+        assert_eq!(
+            lines,
+            [
+                "config.toml: no rule has the id `default/hedgin` (did you mean `default/hedging`?)",
+                "config.toml: `jargon`: rule ids look like `source/name` (did you mean `default/jargon`?)",
+                "config.toml: no rules come from `defualt` (did you mean `default/*`?)",
+            ]
+        );
+    }
+
+    #[test]
+    fn suppressed_issues_say_why() {
+        let mut ignores = Ignores::default();
+        ignores.issues.insert(
+            "/p/a.md".into(),
+            vec![Ignored {
+                rule: None,
+                matched: "leverage".into(),
+                line: None,
+                origin: "ignores.toml".into(),
+            }],
+        );
+        let (r, mut p) = policy(
+            "schema = 1\naccept = [\"synergy\"]\n[rule.\"default/hedging\"]\nlevel = \"off\"",
+            ignores,
+        )
+        .unwrap();
+        let source =
+            "I think synergy and leverage.\n\n<!-- proserunner-disable-next-line -->\nsynergy\n";
+        let why = |p: &Policy| {
+            let linted = lint::document(&r, Format::Markdown, source, Options::default());
+            let applied = p.apply(Some(Path::new("/p/a.md")), source, linted).unwrap();
+            assert!(applied.issues.is_empty());
+            applied
+                .suppressed
+                .into_iter()
+                .map(|s| (s.issue.matched, s.why))
+                .collect::<Vec<_>>()
+        };
+        assert!(why(&p).is_empty(), "kept only when asked");
+        p.set_keep_suppressed(true);
+        assert_eq!(
+            why(&p),
+            [
+                (
+                    "I think".into(),
+                    Suppression::Off {
+                        origin: "config.toml".into()
+                    }
+                ),
+                (
+                    "synergy".into(),
+                    Suppression::Accepted {
+                        origin: "config.toml".into()
+                    }
+                ),
+                (
+                    "leverage".into(),
+                    Suppression::Ignored {
+                        origin: "ignores.toml".into()
+                    }
+                ),
+                (
+                    "synergy".into(),
+                    Suppression::Directive {
+                        at: source.find("proserunner-").unwrap()
+                    }
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_hidden_issue_has_the_level_config_sets() {
+        let (r, mut p) = policy(
+            "schema = 1\naccept = [\"synergy\"]\n[rule.\"default/jargon\"]\nlevel = \"error\"",
+            Ignores::default(),
+        )
+        .unwrap();
+        p.set_keep_suppressed(true);
+        let linted = lint::document(&r, Format::Markdown, TEXT, Options::default());
+        let applied = p.apply(None, TEXT, linted).unwrap();
+        let hidden: Vec<(&str, Level)> = applied
+            .suppressed
+            .iter()
+            .map(|s| (s.issue.matched.as_str(), s.issue.level))
+            .collect();
+        assert_eq!(hidden, [("synergy", Level::Error)]);
+    }
+
+    #[test]
     fn ignores_match_file_rule_and_line() {
         let mut ignores = Ignores::default();
-        ignores.accept.insert("i think".into());
+        ignores
+            .accept
+            .insert("i think".into(), "ignores.toml".into());
         ignores.issues.insert(
             "/p/a.md".into(),
             vec![
@@ -487,11 +820,13 @@ mod tests {
                     rule: Some("default/jargon".into()),
                     matched: "synergy".into(),
                     line: None,
+                    origin: "ignores.toml".into(),
                 },
                 Ignored {
                     rule: None,
                     matched: "leverage".into(),
                     line: Some(3),
+                    origin: "ignores.toml".into(),
                 },
             ],
         );
@@ -593,6 +928,7 @@ mod tests {
             base: "/p".into(),
             within: Some("/p".into()),
             origin: "config.toml".into(),
+            group: 0,
             file: config::parse(
                 "schema = 1\nrules = [{ path = \"x\", prefix = \"mine\" }]\n\
                  [rule.\"mine/broken\"]\nlevel = \"error\"",

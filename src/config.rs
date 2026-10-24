@@ -2,10 +2,12 @@
 //!
 //! Layers, lowest first: built-in defaults, the user config
 //! (`~/.config/proserunner/config.toml`), the project config
-//! (`.proserunner/config.toml`), then `--config FILE`. Tables merge key by
-//! key. A later layer's scalars and lists replace earlier ones, except
-//! `accept`, `mask` and `exclude`, which append; `[formats]` rows and
-//! `[[overrides]]` append too and apply in order. `inherit = false` drops
+//! (`.proserunner/config.toml`), then `--config FILE`. Each can name
+//! configs it `extends`, which are layers just below it. Tables merge key
+//! by key. A later layer's scalars and lists replace earlier ones, except
+//! `accept`, `mask` and `exclude`, which append, and `rules` within one
+//! layer and what it extends, which append too; `[formats]` rows and
+//! `[[overrides]]` append and apply in order. `inherit = false` drops
 //! every layer below the one that says it, unread.
 //!
 //! Paths are relative to the layer's base: the project root for a project
@@ -22,6 +24,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter, Write as _};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
@@ -31,15 +34,18 @@ use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::Deserialize;
 use serde::de::value::MapAccessDeserializer;
 use serde::de::{self, Deserializer, MapAccess, Visitor};
+use toml_edit::{DocumentMut, Item, Table, Value};
 
 use crate::ctx::{self, Ctx, ListScope, PROJECT_DIR};
 use crate::english;
 use crate::error::{Error, Result};
 use crate::format::Output;
+use crate::fsutil;
+use crate::ignores;
 use crate::prose;
-use crate::rules::{DEFAULT_SOURCE, Level};
+use crate::rules::{self, DEFAULT_SOURCE, Level};
 use crate::scan::Format;
-use crate::settings;
+use crate::settings::{self, Problems};
 use crate::typo;
 
 /// The only config format this version reads.
@@ -71,8 +77,16 @@ pub struct ConfigFile {
     /// `false` leaves out the configs below this one, and their ignore
     /// lists.
     pub inherit: Option<bool>,
+    /// Configs this one builds on, such as a team's shared style. Each is
+    /// a layer just below this one, in order, so this file's settings win
+    /// over theirs, and their `rules` come before this file's own. Paths
+    /// are relative to the project root in a project config, and to this
+    /// file's directory in any other.
+    #[serde(default)]
+    pub extends: Vec<String>,
     /// Where rules come from: `"default"` for the built-in rules, or
-    /// directories of rule files. Replaces the list below.
+    /// directories of rule files. Replaces the list below, except the
+    /// lists of configs this one extends, which it adds to.
     pub rules: Option<Vec<SourceSpec>>,
     /// The least serious level that makes a run exit 1.
     pub fail_on: Option<Level>,
@@ -150,7 +164,7 @@ pub struct OverrideTable {
 }
 
 /// A rule's level, or `off`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, clap::ValueEnum)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
@@ -511,7 +525,22 @@ pub struct Config {
     pub overrides: Vec<Override>,
 }
 
+impl Override {
+    /// The settings this override has for rule `id`, as
+    /// [`Config::rule_settings`] finds them.
+    pub fn rule_settings(&self, id: &str) -> RuleSettings {
+        settings_for(&self.rule, id)
+    }
+}
+
 impl Config {
+    /// The settings for rule `id`: its own `[rule."…"]` table over its
+    /// source's `[rule."source/*"]`. A level from the pattern names it in
+    /// its origin.
+    pub fn rule_settings(&self, id: &str) -> RuleSettings {
+        settings_for(&self.rule, id)
+    }
+
     /// The format of the file at `path` (absolute): the last `[formats]`
     /// row that matches it, else its extension's. `None` when proserunner
     /// doesn't read it.
@@ -558,6 +587,8 @@ pub enum LayerKind {
     Project,
     /// `--config FILE`.
     Explicit,
+    /// A config another one names in `extends`.
+    Extended,
 }
 
 /// One config file, read.
@@ -574,6 +605,10 @@ pub struct Layer {
     pub within: Option<PathBuf>,
     /// How its path is shown.
     pub origin: String,
+    /// Which config named on its own (the user's, the project's or
+    /// `--config`) this one is, or extends, counting from 0. `rules` add
+    /// up within a group, and a later group's replace an earlier one's.
+    pub group: usize,
     /// What it says.
     pub file: ConfigFile,
 }
@@ -583,63 +618,149 @@ pub struct Layer {
 /// (`--config`), which must exist. Each layer's path patterns without a
 /// `/` match below `project`, or the working directory when it's `None`.
 pub fn load(ctx: &Ctx, project: Option<&Path>, explicit: Option<&Path>) -> Result<Config> {
-    let read = |kind, path: &Path, base: &Path| read_layer(ctx, kind, path, base, project);
     // Highest first, so a layer with `inherit = false` keeps the ones below
     // it from being read: a broken or newer user config can't stop a
     // project that left it out.
-    let mut layers = Vec::new();
-    let inherits = |layers: &[Layer]| layers.last().is_none_or(|l| l.file.inherit != Some(false));
+    let mut read = Reading {
+        ctx,
+        within: project,
+        layers: Vec::new(),
+        chain: Vec::new(),
+    };
+    let mut inherits = true;
     if let Some(given) = explicit {
         let path = ctx.absolute(given);
         if !path.is_file() {
             return Err(Error::NotFound(given.to_path_buf()));
         }
         let base = path.parent().unwrap_or(Path::new("/")).to_path_buf();
-        layers.push(read(LayerKind::Explicit, &path, &base)?);
+        inherits = read.named(LayerKind::Explicit, &path, &base)?;
     }
-    if let Some(root) = project.filter(|_| inherits(&layers)) {
+    if let Some(root) = project.filter(|_| inherits) {
         let path = root.join(PROJECT_DIR).join(FILE);
         if path.is_file() {
-            layers.push(read(LayerKind::Project, &path, root)?);
+            inherits = read.named(LayerKind::Project, &path, root)?;
         }
     }
-    if let Some(dir) = ctx.config_dir.as_deref().filter(|_| inherits(&layers)) {
+    if let Some(dir) = ctx.config_dir.as_deref().filter(|_| inherits) {
         let path = dir.join(FILE);
         if path.is_file() {
-            layers.push(read(LayerKind::User, &path, dir)?);
+            read.named(LayerKind::User, &path, dir)?;
         }
     }
-    layers.reverse();
-    merge(ctx, layers)
+    merge(ctx, read.lowest_first())
 }
 
-fn read_layer(
-    ctx: &Ctx,
-    kind: LayerKind,
-    path: &Path,
-    base: &Path,
-    within: Option<&Path>,
-) -> Result<Layer> {
-    let origin = ctx.display(path);
-    let text = fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
-    let file = parse(&text).map_err(|m| Error::config(&origin, m))?;
-    Ok(Layer {
-        kind,
-        base: base.to_path_buf(),
-        within: within.map(Path::to_path_buf),
-        origin,
-        file,
-    })
+/// The layers `load` has read, highest first, each with its file's
+/// canonical path.
+struct Reading<'a> {
+    ctx: &'a Ctx,
+    within: Option<&'a Path>,
+    layers: Vec<(Layer, PathBuf)>,
+    /// The configs whose `extends` are being read, to catch a cycle.
+    chain: Vec<PathBuf>,
 }
 
-/// Merges layers, lowest first, over the built-in defaults.
+impl Reading<'_> {
+    /// Reads a config named on its own, and what it extends; returns
+    /// whether the layers below it apply (no `inherit = false`).
+    fn named(&mut self, kind: LayerKind, path: &Path, base: &Path) -> Result<bool> {
+        let first = self.layers.len();
+        self.layer(kind, path, base)?;
+        Ok(self.layers[first].0.file.inherit != Some(false))
+    }
+
+    /// Reads the config at `path`, then the configs it extends, the last
+    /// first, so each lands below the one before it.
+    fn layer(&mut self, kind: LayerKind, path: &Path, base: &Path) -> Result<()> {
+        let ctx = self.ctx;
+        let origin = ctx.display(path);
+        let text = fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
+        let file = parse(&text).map_err(|m| Error::config(&origin, m))?;
+        if kind == LayerKind::Extended && file.inherit.is_some() {
+            return Err(Error::config(
+                &origin,
+                "`inherit` can't be in a config another extends: it decides which layers apply, so it goes in the config that names this one",
+            ));
+        }
+        let extends: Vec<PathBuf> = file.extends.iter().map(|p| ctx.resolve(base, p)).collect();
+        // An extended config is in the group of the config named on its
+        // own that it's below.
+        let group = match kind {
+            LayerKind::Extended => self.layers.last().map_or(0, |(l, _)| l.group),
+            _ => self
+                .layers
+                .iter()
+                .filter(|(l, _)| l.kind != LayerKind::Extended)
+                .count(),
+        };
+        let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        self.layers.push((
+            Layer {
+                kind,
+                base: base.to_path_buf(),
+                within: self.within.map(Path::to_path_buf),
+                origin: origin.clone(),
+                group,
+                file,
+            },
+            canonical.clone(),
+        ));
+        self.chain.push(canonical);
+        for target in extends.iter().rev() {
+            if !target.is_file() {
+                return Err(Error::config(
+                    &origin,
+                    format!("extends {}, which doesn't exist", ctx.display(target)),
+                ));
+            }
+            let canonical = fs::canonicalize(target).unwrap_or_else(|_| target.clone());
+            if self.chain.contains(&canonical) {
+                return Err(Error::config(
+                    &origin,
+                    format!(
+                        "extends {}, which extends this one, so neither can be below the other",
+                        ctx.display(target)
+                    ),
+                ));
+            }
+            let dir = target.parent().unwrap_or(Path::new("/")).to_path_buf();
+            self.layer(LayerKind::Extended, target, &dir)?;
+        }
+        self.chain.pop();
+        Ok(())
+    }
+
+    /// The layers, lowest first. A config extended more than once stays
+    /// only at its lowest place, below everything that extends it.
+    fn lowest_first(self) -> Vec<Layer> {
+        let mut seen: Vec<PathBuf> = Vec::new();
+        let mut out = Vec::new();
+        for (layer, canonical) in self.layers.into_iter().rev() {
+            if layer.kind == LayerKind::Extended {
+                if seen.contains(&canonical) {
+                    continue;
+                }
+                seen.push(canonical);
+            }
+            out.push(layer);
+        }
+        out
+    }
+}
+
+/// Merges layers, lowest first, over the built-in defaults. The error
+/// names every mistake in every layer.
 pub fn merge(ctx: &Ctx, layers: Vec<Layer>) -> Result<Config> {
     let mut config = Config::default();
+    let mut errors = Vec::new();
+    // The group of the layer that last set `rules`.
+    let mut rules_group = None;
     for layer in layers {
         if layer.file.inherit == Some(false) {
             let mut inherited = config.inherited;
             match layer.kind {
-                LayerKind::User => {}
+                LayerKind::User | LayerKind::Extended => {}
                 LayerKind::Project => inherited.global = false,
                 LayerKind::Explicit => {
                     inherited.global = false;
@@ -650,39 +771,60 @@ pub fn merge(ctx: &Ctx, layers: Vec<Layer>) -> Result<Config> {
                 inherited,
                 ..Config::default()
             };
+            rules_group = None;
         }
-        apply(ctx, &mut config, layer).map_err(|(origin, m)| Error::config(origin, m))?;
+        let origin = layer.origin.clone();
+        for problem in apply(ctx, &mut config, &mut rules_group, layer) {
+            errors.push(Error::config(&origin, problem));
+        }
     }
+    Error::all(errors)?;
     Ok(config)
 }
 
-type Failure = (String, String);
-
-fn apply(ctx: &Ctx, config: &mut Config, layer: Layer) -> Result<(), Failure> {
+/// Applies `layer` over `config`, leaving out each value with a mistake,
+/// and returns the mistakes. `rules_group` is the group of the layer that
+/// last set `rules`: within a group, `rules` add up.
+fn apply(
+    ctx: &Ctx,
+    config: &mut Config,
+    rules_group: &mut Option<usize>,
+    layer: Layer,
+) -> Vec<String> {
     let origin = layer.origin.as_str();
-    let fail = |m: String| (origin.to_owned(), m);
+    let mut problems = Problems::default();
     let f = layer.file;
     config.files.push(origin.to_owned());
 
     if let Some(specs) = f.rules {
-        let dirs: Vec<RuleDir> = specs
+        let dirs: Result<Vec<RuleDir>, String> = specs
             .iter()
             .map(|s| rule_dir(ctx, &layer.base, s))
-            .collect::<Result<_, _>>()
-            .map_err(fail)?;
-        config.rules = Sourced::new(dirs, origin);
+            .collect();
+        if let Some(dirs) = problems.keep(dirs) {
+            config.rules = if *rules_group == Some(layer.group) {
+                let mut added = config.rules.value.clone();
+                added.extend(dirs.into_iter().filter(|d| !config.rules.value.contains(d)));
+                Sourced::new(added, &format!("{}, {origin}", config.rules.origin))
+            } else {
+                Sourced::new(dirs, origin)
+            };
+            *rules_group = Some(layer.group);
+        }
     }
     if let Some(level) = f.fail_on {
         config.fail_on = Sourced::new(level, origin);
     }
-    config.accept.extend(
-        accepted(&f.accept)
-            .map_err(fail)?
-            .map(|a| Sourced::new(a, origin)),
-    );
+    if let Some(accept) = problems.keep(accepted(&f.accept)) {
+        config
+            .accept
+            .extend(accept.map(|a| Sourced::new(a, origin)));
+    }
     for m in f.mask {
-        Regex::new(&m).map_err(|e| fail(format!("invalid mask `{m}`: {e}")))?;
-        config.mask.push(Sourced::new(m, origin));
+        let valid = Regex::new(&m).map_err(|e| format!("invalid mask `{m}`: {e}"));
+        if problems.keep(valid).is_some() {
+            config.mask.push(Sourced::new(m, origin));
+        }
     }
     let exclude: Vec<Sourced<String>> = f
         .check
@@ -690,8 +832,10 @@ fn apply(ctx: &Ctx, config: &mut Config, layer: Layer) -> Result<(), Failure> {
         .into_iter()
         .map(|p| Sourced::new(p, origin))
         .collect();
-    let exclude = paths(ctx, &layer.base, layer.within.as_deref(), exclude).map_err(fail)?;
-    config.exclude.extend(exclude).map_err(fail)?;
+    if let Some(exclude) = problems.keep(paths(ctx, &layer.base, layer.within.as_deref(), exclude))
+    {
+        problems.keep(config.exclude.extend(exclude));
+    }
     if let Some(v) = f.check.quoted_text {
         config.quoted_text = Sourced::new(v, origin);
     }
@@ -706,16 +850,19 @@ fn apply(ctx: &Ctx, config: &mut Config, layer: Layer) -> Result<(), Failure> {
         format: name,
     } in f.formats
     {
-        let format = Format::named(&name).ok_or_else(|| fail(unknown_format(&pattern, &name)))?;
+        let format = Format::named(&name).ok_or_else(|| unknown_format(&pattern, &name));
         let written = vec![Sourced::new(pattern, origin)];
-        let paths = paths(ctx, &layer.base, layer.within.as_deref(), written).map_err(fail)?;
-        config.formats.push(FormatRow { paths, format });
+        let paths = paths(ctx, &layer.base, layer.within.as_deref(), written);
+        if let (Some(format), Some(paths)) = (problems.keep(format), problems.keep(paths)) {
+            config.formats.push(FormatRow { paths, format });
+        }
     }
-    merge_rules(&mut config.rule, f.rule, origin).map_err(fail)?;
+    merge_rules(&mut config.rule, f.rule, origin, &mut problems);
 
     for o in f.overrides {
         if o.paths.is_empty() {
-            return Err(fail("an [[overrides]] entry needs `paths`".into()));
+            problems.add("an [[overrides]] entry needs `paths`".into());
+            continue;
         }
         let written: Vec<Sourced<String>> = o
             .paths
@@ -723,37 +870,78 @@ fn apply(ctx: &Ctx, config: &mut Config, layer: Layer) -> Result<(), Failure> {
             .map(|p| Sourced::new(p, origin))
             .collect();
         let mut rule = BTreeMap::new();
-        merge_rules(&mut rule, o.rule, origin).map_err(fail)?;
-        config.overrides.push(Override {
-            origin: origin.to_owned(),
-            paths: paths(ctx, &layer.base, layer.within.as_deref(), written).map_err(fail)?,
-            accept: accepted(&o.accept).map_err(fail)?.collect(),
-            rule,
-        });
+        merge_rules(&mut rule, o.rule, origin, &mut problems);
+        let paths = problems.keep(paths(ctx, &layer.base, layer.within.as_deref(), written));
+        let accept = problems.keep(accepted(&o.accept));
+        if let (Some(paths), Some(accept)) = (paths, accept) {
+            config.overrides.push(Override {
+                origin: origin.to_owned(),
+                paths,
+                accept: accept.collect(),
+                rule,
+            });
+        }
     }
-    Ok(())
+    problems.into_vec()
 }
 
+/// Merges `[rule."…"]` tables into `into`, adding their mistakes to
+/// `problems`. Ids are checked against the rules once they're loaded (see
+/// `Policy::try_new`); only a pattern's form is checked here.
 fn merge_rules(
     into: &mut BTreeMap<String, RuleSettings>,
     tables: BTreeMap<String, RuleTable>,
     origin: &str,
-) -> Result<(), String> {
+    problems: &mut Problems,
+) {
     for (id, table) in tables {
-        if !id.contains('/') {
-            return Err(format!(
-                "[rule.\"{id}\"]: rule ids look like `source/name`, such as `default/hedging`"
+        if id.contains('*') && pattern_source(&id).is_none() {
+            problems.add(format!(
+                "[rule.\"{id}\"]: `*` only stands for every rule from a source, as in `default/*`"
             ));
+            continue;
         }
+        let Some(accept) = problems.keep(accepted(&table.accept)) else {
+            continue;
+        };
         let settings = into.entry(id).or_default();
         if let Some(level) = table.level {
             settings.level = Some(Sourced::new(level, origin));
         }
         settings
             .accept
-            .extend(accepted(&table.accept)?.map(|a| Sourced::new(a, origin)));
+            .extend(accept.map(|a| Sourced::new(a, origin)));
     }
-    Ok(())
+}
+
+/// The source a `[rule."source/*"]` key stands for, or `None` when the key
+/// isn't one.
+pub fn pattern_source(key: &str) -> Option<&str> {
+    key.strip_suffix("/*")
+        .filter(|source| !source.is_empty() && !source.contains(['/', '*']))
+}
+
+/// The settings for rule `id` in `tables`: its own `[rule."…"]` table
+/// over its source's `[rule."source/*"]`. A level from the pattern names
+/// it in its origin.
+fn settings_for(tables: &BTreeMap<String, RuleSettings>, id: &str) -> RuleSettings {
+    let source = rules::id_source(id);
+    let pattern = format!("{source}/*");
+    let shared = tables.get(&pattern);
+    let own = tables.get(id);
+    let level = own.and_then(|s| s.level.clone()).or_else(|| {
+        let level = shared?.level.as_ref()?;
+        Some(Sourced::new(
+            level.value,
+            &format!("{}, by [rule.\"{pattern}\"]", level.origin),
+        ))
+    });
+    let accept = shared
+        .into_iter()
+        .chain(own)
+        .flat_map(|s| s.accept.iter().cloned())
+        .collect();
+    RuleSettings { level, accept }
 }
 
 /// Why a `[formats]` row can't use `name`, with the format it most likely
@@ -898,6 +1086,92 @@ fn globs(ctx: &Ctx, base: &Path, pattern: &str) -> Result<Vec<(String, bool)>, S
         out.push((format!("{glob}/**"), relative));
     }
     Ok(out)
+}
+
+// ---------------------------------------------------------------------
+// Writing.
+
+/// What a config file that `set_rule_level` makes starts with.
+const NEW_FILE: &str = "\
+# proserunner config. 'proserunner config' shows the merged config, and
+# 'proserunner guide config' every setting.
+schema = 1
+";
+
+/// Sets `[rule."ID"] level` in `scope`'s config file: the user config, or
+/// a project's. `id` is a rule's id or a `source/*` pattern. A file that
+/// doesn't exist yet is made; one that does keeps its comments and
+/// layout, and is never written if it doesn't parse, before or after.
+/// Returns whether the file changed.
+pub fn set_rule_level(ctx: &Ctx, scope: &ListScope, id: &str, level: Setting) -> Result<bool> {
+    let dir = scope.dir(ctx)?;
+    let path = dir.join(FILE);
+    let origin = ctx.display(&path);
+    let _lock = ignores::lock(ctx, scope)?;
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == ErrorKind::NotFound => NEW_FILE.to_owned(),
+        Err(e) => return Err(Error::io(&path, e)),
+    };
+    let written = parse(&text).map_err(|m| Error::config(&origin, m))?;
+    if written.rule.get(id).and_then(|t| t.level) == Some(level) {
+        return Ok(false);
+    }
+    let mut doc = text
+        .parse::<DocumentMut>()
+        .map_err(|e| Error::config(&origin, e.to_string().trim_end().to_owned()))?;
+    // A new table goes at the very end. Comments there, such as the
+    // examples `init` writes, would otherwise follow it, and a key
+    // uncommented there would land in it.
+    let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_owned();
+    let not_a_table = |key: &str| Error::config(&origin, format!("`{key}` isn't a table"));
+    let rules = doc
+        .entry("rule")
+        .or_insert_with(|| {
+            // `[rule."…"]` headers, with no `[rule]` of its own.
+            let mut t = Table::new();
+            t.set_implicit(true);
+            Item::Table(t)
+        })
+        .as_table_like_mut()
+        .ok_or_else(|| not_a_table("rule"))?;
+    let moved = rules.get(id).is_none() && !trailing.is_empty();
+    let item = rules.entry(id).or_insert_with(|| {
+        let mut table = Table::new();
+        if moved {
+            table.decor_mut().set_prefix(format!("{trailing}\n\n"));
+        }
+        Item::Table(table)
+    });
+    // An inline table is laid out afresh, or its new key comes out as
+    // `["x"] , level = …`.
+    let inline = item.is_inline_table();
+    let table = item
+        .as_table_like_mut()
+        .ok_or_else(|| not_a_table(&format!("rule.{}", settings::quote(id))))?;
+    match table.get_mut("level") {
+        // In place, so the key's spacing and a comment after the value
+        // stay.
+        Some(Item::Value(old)) => {
+            let decor = old.decor().clone();
+            *old = Value::from(level.as_str());
+            *old.decor_mut() = decor;
+        }
+        _ => {
+            table.insert("level", toml_edit::value(level.as_str()));
+        }
+    }
+    if inline {
+        table.fmt();
+    }
+    if moved {
+        doc.set_trailing("");
+    }
+    let edited = doc.to_string();
+    parse(&edited).map_err(|m| Error::config(&origin, m))?;
+    fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
+    fsutil::write_atomic(&path, &edited)?;
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------
@@ -1072,13 +1346,15 @@ mod tests {
         Ctx::new("/work/proj".into(), Some("/home/me".into()), None, false)
     }
 
-    /// A layer as `load` reads it, in the project `/work/proj`.
+    /// A layer as `load` reads it, in the project `/work/proj`, in a group
+    /// of its own.
     fn layer(kind: LayerKind, base: &str, origin: &str, text: &str) -> Layer {
         Layer {
             kind,
             base: base.into(),
             within: Some("/work/proj".into()),
             origin: origin.into(),
+            group: kind as usize,
             file: parse(text).unwrap(),
         }
     }
@@ -1216,8 +1492,73 @@ mod tests {
                 .contains("belongs to the built-in rules")
         );
         assert!(bad("schema = 1\nmask = [\"(\"]").starts_with("u.toml: invalid mask"));
-        assert!(bad("schema = 1\n[rule.hedging]\nlevel = \"off\"").contains("source/name"));
+        assert!(
+            bad("schema = 1\n[rule.\"default/h*\"]\nlevel = \"off\"")
+                .contains("`*` only stands for every rule from a source")
+        );
         assert!(bad("schema = 1\naccept = [\" \"]").contains("can't be empty"));
+    }
+
+    #[test]
+    fn every_mistake_in_every_layer_is_reported() {
+        let user = layer(
+            LayerKind::User,
+            "/u",
+            "u.toml",
+            "schema = 1\nmask = [\"(\"]",
+        );
+        let project = layer(
+            LayerKind::Project,
+            "/work/proj",
+            "p.toml",
+            "schema = 1\naccept = [\" \"]\n[formats]\n\"*.x\" = \"markdwn\"\n[[overrides]]\npaths = []",
+        );
+        let e = merge(&ctx(), vec![user, project]).unwrap_err();
+        let lines: Vec<String> = e.each().iter().map(Error::to_string).collect();
+        assert_eq!(lines.len(), 4, "{lines:?}");
+        assert!(lines[0].starts_with("u.toml: invalid mask"), "{lines:?}");
+        assert_eq!(lines[1], "p.toml: `accept` entries can't be empty");
+        assert!(lines[2].contains("did you mean `markdown`?"), "{lines:?}");
+        assert_eq!(lines[3], "p.toml: an [[overrides]] entry needs `paths`");
+        assert_eq!(e.to_string(), lines.join("\n"));
+    }
+
+    #[test]
+    fn source_patterns_set_every_rule_from_a_source() {
+        let c = merge(
+            &ctx(),
+            vec![layer(
+                LayerKind::Project,
+                "/work/proj",
+                "p.toml",
+                r#"schema = 1
+                [rule."default/*"]
+                level = "hint"
+                accept = ["a"]
+                [rule."default/jargon"]
+                level = "error"
+                accept = ["b"]
+                [[overrides]]
+                paths = ["legal/"]
+                rule."default/*".level = "off"
+                "#,
+            )],
+        )
+        .unwrap();
+        let jargon = c.rule_settings("default/jargon");
+        assert_eq!(jargon.level.as_ref().unwrap().value, Setting::Error);
+        assert_eq!(jargon.level.unwrap().origin, "p.toml");
+        let accept: Vec<&str> = jargon.accept.iter().map(|a| a.value.as_str()).collect();
+        assert_eq!(accept, ["a", "b"]);
+        let hedging = c.rule_settings("default/hedging").level.unwrap();
+        assert_eq!(hedging.value, Setting::Hint);
+        assert_eq!(hedging.origin, "p.toml, by [rule.\"default/*\"]");
+        assert!(c.rule_settings("project/x").level.is_none());
+        let off = c.overrides[0]
+            .rule_settings("default/jargon")
+            .level
+            .unwrap();
+        assert_eq!(off.value, Setting::Off);
     }
 
     #[test]

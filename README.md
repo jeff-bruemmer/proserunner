@@ -52,10 +52,14 @@ $ proserunner docs/ README.md           # Check files and directories
 $ proserunner docs/ -o plain            # One issue per line, for editors and grep
 $ pandoc -t markdown a.docx | proserunner -   # Check standard input (read as Markdown)
 $ proserunner --stdin-filename docs/a.md < draft   # Check standard input as docs/a.md
+$ proserunner docs/ --rule hedging      # Only one rule's issues
+$ proserunner docs/ --show-suppressed   # Also what config and ignores hide, and why
 $ proserunner explain hedging           # What a rule matches, and what changes it
 $ proserunner rules                     # Every rule and its level
+$ proserunner rules set hedging off     # Change a rule's level in config
 $ proserunner config                    # The merged config, and where each value came from
 $ proserunner init                      # Start a project config in .proserunner/
+$ proserunner guide rules               # These docs, for the version you have
 ```
 
 Directories are walked in order. Hidden files, files over 10 MB, and
@@ -110,6 +114,7 @@ words, patterns and examples.
 | `cliches` | An overused phrase or opinion that betrays a lack of original thought. |
 | `compression` | Compressing common phrases. From *Style: Toward Clarity and Grace* by Joseph M. Williams. |
 | `corporate-speak` | Words and phrases that make you sound like an automaton. |
+| `heading-periods` | A heading is a label, not a sentence, so it doesn't end with a period. |
 | `hedging` | Say, or say not. There is no hedging. |
 | `jargon` | Phrases infected with bureaucracy. |
 | `meta-discourse` | Self-referential phrases that add no value. |
@@ -122,7 +127,6 @@ words, patterns and examples.
 | `phrasal-adjectives` | Hyphenate phrasal adjectives. |
 | `pompous-diction` | Use simpler words. From *Style: Toward Clarity and Grace* by Joseph M. Williams. |
 | `redundancies` | Phrases that say the same thing more than once. |
-| `regex` | Raw regular expressions. |
 | `repetition` | A word repeated right after itself, like "the the". |
 | `sexism` | Sexist or ridiculous terms (like *mail person* for *mail carrier*). |
 | `skunked-terms` | Words with controversial correct usage that are best avoided. |
@@ -136,12 +140,14 @@ near-certain mistakes, so they're errors. `overused-adverbs`, `hedging`,
 `weasel-words` and `skunked-terms` give style advice, so they're hints.
 The rest are warnings. Errors and warnings make a run exit 1, and hints
 don't; `--fail-on error` keeps a CI check to errors. A run with many
-issues ends by naming the rules that found the most, as a place to start
-tuning.
+issues ends by naming the rules and files that found the most, as a
+place to start tuning: a rule to turn down, or a file that isn't prose.
 
 ## Make it yours
 
-- **Turn rules off or change their level:** see [Config](docs/config.md).
+- **Turn rules off or change their level:** `proserunner rules set
+  hedging off` writes it for you, or edit the config. `default/*` stands
+  for every built-in rule. See [Config](docs/config.md).
 
   ```toml
   # .proserunner/config.toml
@@ -155,6 +161,14 @@ tuning.
   [[overrides]]
   paths = ["docs/legal/"]
   rule."default/jargon".level = "error"
+  ```
+
+- **Share a style:** a config can build on others with `extends`, and it
+  gets their rules too, so a team keeps one style for every repository.
+  See [Extends](docs/config.md#extends).
+
+  ```toml
+  extends = ["../house-style/config.toml"]
   ```
 
 - **Write your own rules:** a rule is a TOML file of words, patterns and
@@ -186,18 +200,25 @@ tuning.
   or a word everywhere
   (`proserunner ignore add hopefully`). See [Ignores](docs/config.md#ignores).
 
+- **See what's hidden:** `--show-suppressed` lists the issues that
+  config, ignore lists and inline control hide, each with what hid it,
+  such as "accepted in .proserunner/config.toml".
+
 Mistakes are never silent. A config with an unknown key or a misspelled
 rule id, or a directive that names no rule, stops the run with an error
 that names the file (and the line and column where there are some) and
-suggests the closest match. A rule file that doesn't load is reported the
-same way and left out; the other rules still run, and the run exits 2.
+suggests the closest match. A file with several mistakes reports each
+of them in one run, and a rule's name where its id goes (`hedging`) gets
+the id it may mean (`default/hedging`). A rule file that doesn't load is
+reported the same way and left out; the other rules still run, and the
+run exits 2.
 
 ## Editors and CI
 
 | `-o` | For |
 | --- | --- |
 | `group` | People (the default) |
-| `plain` | `path:line:col: [n] "match" -> message`, for Vim's quickfix, Emacs compile mode and grep |
+| `plain` | `path:line:col: [n] "match" -> message (rule)`, for Vim's quickfix, Emacs compile mode and grep |
 | `table`, `verbose` | Markdown reports |
 | `json` | Programs: lines, columns and byte offsets ([format](docs/formats.md#json-output)) |
 | `sarif` | Code scanning (SARIF 2.1.0) |
@@ -217,12 +238,16 @@ The hook passes `--force-exclude`, so files your ignore files and
 `exclude` skip are skipped even though pre-commit names them.
 
 JSON Schemas for config, rule and ignore files are in [`schemas/`](schemas),
+and `proserunner schema config` (or `rule`, or `ignores`) prints them,
 so editors that read TOML schemas (Even Better TOML, taplo) check and
 complete them. See [Config](docs/config.md#editor-support).
 
 ## Docs
 
-- [Config](docs/config.md): layers, settings, overrides, ignores
+`proserunner guide TOPIC` prints each of these for the version you
+have, so they're at hand offline and in any repository.
+
+- [Config](docs/config.md): layers, settings, extends, overrides, ignores
 - [Rules](docs/rules.md): writing and testing rules
 - [File formats](docs/formats.md): what counts as prose, inline control, JSON and Checkstyle output
 - [Upgrading from 0.8](docs/upgrading.md)

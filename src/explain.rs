@@ -44,9 +44,9 @@ pub fn render(rule: &Rule, config: &Config, lists: &[List<'_>]) -> String {
 
     // A built-in rule's origin is its id; any other's is its file.
     let builtin = rule.origin == rule.id;
-    let settings = config.rule.get(&rule.id);
+    let settings = config.rule_settings(&rule.id);
     let own_levels = rule.entries.iter().any(|e| e.level != rule.level);
-    let level = match settings.and_then(|s| s.level.as_ref()) {
+    let level = match settings.level.as_ref() {
         Some(set) if own_levels => {
             format!("{} (set in {}, for every entry)", set.value, set.origin)
         }
@@ -156,8 +156,8 @@ pub fn render(rule: &Rule, config: &Config, lists: &[List<'_>]) -> String {
 
     let _ = write!(
         out,
-        "\nChange it in config\n  [rule.\"{}\"]\n  level = \"off\"  # or \"hint\", \"warning\" or \"error\"\n",
-        rule.id
+        "\nChange it in config, or with 'proserunner rules set {id} off'\n  [rule.\"{id}\"]\n  level = \"off\"  # or \"hint\", \"warning\" or \"error\"\n",
+        id = rule.id
     );
     out
 }
@@ -285,13 +285,11 @@ fn suppressions(rule: &Rule, config: &Config, lists: &[List<'_>]) -> Vec<(String
         };
         out.push((what, "except, in the rule".to_owned()));
     }
-    if let Some(settings) = config.rule.get(&rule.id) {
-        for a in &settings.accept {
-            out.push((
-                settings::quote(&a.value),
-                format!("accept for this rule, {}", a.origin),
-            ));
-        }
+    for a in &config.rule_settings(&rule.id).accept {
+        out.push((
+            settings::quote(&a.value),
+            format!("accept for this rule, {}", a.origin),
+        ));
     }
     for a in &config.accept {
         out.push((settings::quote(&a.value), format!("accept, {}", a.origin)));
@@ -325,16 +323,15 @@ fn overrides(rule: &Rule, config: &Config) -> Vec<String> {
             .collect();
         let paths = paths.join(", ");
         let mut changes = Vec::new();
-        if let Some(settings) = o.rule.get(&rule.id) {
-            if let Some(level) = &settings.level {
-                changes.push(format!("level {}", level.value));
-            }
-            for a in &settings.accept {
-                changes.push(format!(
-                    "accept {} for this rule",
-                    settings::quote(&a.value)
-                ));
-            }
+        let settings = o.rule_settings(&rule.id);
+        if let Some(level) = &settings.level {
+            changes.push(format!("level {}", level.value));
+        }
+        for a in &settings.accept {
+            changes.push(format!(
+                "accept {} for this rule",
+                settings::quote(&a.value)
+            ));
         }
         for a in &o.accept {
             changes.push(format!("accept {}", settings::quote(a)));
@@ -373,6 +370,7 @@ mod tests {
             base: "/p".into(),
             within: Some("/p".into()),
             origin: ".proserunner/config.toml".into(),
+            group: 0,
             file: config::parse(text).unwrap(),
         };
         config::merge(&ctx, vec![layer]).unwrap()
@@ -459,7 +457,7 @@ Never reported
 Overrides
   "legal/": level off (.proserunner/config.toml)
 
-Change it in config
+Change it in config, or with 'proserunner rules set project/style off'
   [rule."project/style"]
   level = "off"  # or "hint", "warning" or "error"
 "#
@@ -510,7 +508,7 @@ Entries
       a document of 50 words or more above grade 10 by Flesch-Kincaid
       message: {formula} grade level {score}; aim for {limit} or lower.
 
-Change it in config
+Change it in config, or with 'proserunner rules set project/style off'
   [rule."project/style"]
   level = "off"  # or "hint", "warning" or "error"
 "#
@@ -560,7 +558,7 @@ Entries
 Never reported
   pattern "mac ?os 9"  except, in the rule
 
-Change it in config
+Change it in config, or with 'proserunner rules set project/style off'
   [rule."project/style"]
   level = "off"  # or "hint", "warning" or "error"
 "#

@@ -47,10 +47,19 @@ pub fn number(n: usize) -> String {
 
 /// `a`, `a and b`, `a, b and c`.
 pub fn and_list(items: &[String]) -> String {
+    joined(items, "and")
+}
+
+/// `a`, `a or b`, `a, b or c`.
+pub fn or_list(items: &[String]) -> String {
+    joined(items, "or")
+}
+
+fn joined(items: &[String], word: &str) -> String {
     match items {
         [] => String::new(),
         [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => format!("{} {word} {last}", rest.join(", ")),
     }
 }
 

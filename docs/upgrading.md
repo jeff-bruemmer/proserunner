@@ -64,6 +64,8 @@ binary, pinned to the release.
 Each rule has an id, `<source>/<name>`: `default/hedging` for the
 built-in hedging rule, and `project/NAME` for a rule in a project's
 `.proserunner/rules/`. Config, `explain` and inline control use ids.
+The built-in `regex` check is now `default/heading-periods`, and 0.8
+settings that name it convert to that.
 
 ## Words are literal
 
@@ -122,7 +124,7 @@ these ways:
 | `-o edn` | Gone. Use `-o json` |
 | `-o json` | Now an object, `{"version": 1, "issues": [...]}`, with end positions and byte offsets ([format](formats.md#json-output)) |
 | `-o table` | Now a Markdown table |
-| | New: `--fail-on LEVEL`, `-o sarif`, `-o github`, `-o checkstyle`, `explain`, `config`, `rules test`, `rules export` |
+| | New: `--fail-on LEVEL`, `--rule RULE`, `--show-suppressed`, `-o sarif`, `-o github`, `-o checkstyle`, `explain`, `config`, `rules set`, `rules test`, `rules export`, `guide`, `schema` |
 
 The commands `ignore add`, `remove`, `list`, `clear`, `audit` and `clean`
 work as before, as do `init`, `--ignore-issues`, `--ignore-all`,

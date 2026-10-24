@@ -9,7 +9,7 @@ repository = "https://github.com/jeff-bruemmer/proserunner"
 readme = "README.md"
 keywords = ["prose", "linter", "writing", "markdown", "style"]
 categories = ["command-line-utilities", "text-processing"]
-include = ["/src", "/defaults", "/build.rs", "/README.md", "/LICENSE.txt", "/CHANGELOG.md"]
+include = ["/src", "/defaults", "/docs", "/schemas", "/build.rs", "/README.md", "/LICENSE.txt", "/CHANGELOG.md"]
 
 [dependencies]
 aho-corasick = "1.1"
