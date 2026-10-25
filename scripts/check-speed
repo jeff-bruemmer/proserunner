@@ -39,7 +39,12 @@ def main():
         doc = tmp / "sample.md"
         doc.write_text(sample(ROOT / "resources" / "benchmark-data" / "medium.md"))
         home = tmp / "home"
-        env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "XDG_CACHE_HOME": str(home / ".cache"),
+        }
         report = tmp / "report.json"
         subprocess.run(
             ["hyperfine", "-N", "-i", "--warmup", "5", "--runs", str(args.runs),

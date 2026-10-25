@@ -9,9 +9,11 @@ use std::process::ExitCode;
 use cli::{Cli, Command};
 use commands::EXIT_ERROR;
 use proserunner::Result;
+use proserunner::contain;
 use proserunner::ctx::Ctx;
 
 fn main() -> ExitCode {
+    contain::quiet_hook();
     let cli = cli::parse();
     let result = Ctx::from_env(cli.global.quiet).and_then(|ctx| run(&ctx, cli));
     match result {

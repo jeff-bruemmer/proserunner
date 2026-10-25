@@ -51,7 +51,6 @@ harness = false
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
 
 [lints.rust]
 missing_docs = "warn"

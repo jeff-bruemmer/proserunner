@@ -141,6 +141,18 @@ fn a_directory_with_nothing_to_check_says_why() {
 }
 
 #[test]
+fn an_mdx_file_its_parser_panics_on_is_read_as_markdown() {
+    let env = Env::new();
+    env.write("a.mdx", "<Note>A software program\n---\n");
+    env.write("dirty.md", DIRTY);
+    let r = run(env.cmd().args(["a.mdx", "dirty.md", "-o", "plain"]));
+    assert_eq!(r.code, 1, "{}", r.stderr);
+    assert!(r.stdout.starts_with("a.mdx:1:"), "{}", r.stdout);
+    assert!(r.stdout.contains("dirty.md:"), "{}", r.stdout);
+    assert!(!r.stderr.contains("panicked"), "{}", r.stderr);
+}
+
+#[test]
 fn check_is_optional() {
     let env = Env::new();
     env.write("dirty.md", DIRTY);
@@ -1187,6 +1199,17 @@ fn the_project_is_the_one_around_the_checked_files() {
     assert_eq!(r.code, 2);
     assert!(
         r.stderr.contains("check each project on its own"),
+        "{}",
+        r.stderr
+    );
+
+    // A file in no project doesn't take on a project's config.
+    env.write("loose/c.md", "Perhaps.\n");
+    let r = run(env.cmd().args(["proj/docs/a.md", "loose"]));
+    assert_eq!(r.code, 2);
+    assert!(
+        r.stderr
+            .contains("and loose in no project; check each project on its own"),
         "{}",
         r.stderr
     );

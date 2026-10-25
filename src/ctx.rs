@@ -123,14 +123,16 @@ impl Ctx {
         find_project(&self.cwd, self.home.as_deref())
     }
 
-    /// The project the checked paths are in: the one around them, or, when
-    /// none is in a project, the one around the working directory. Paths in
-    /// two projects are an error, since a run has one config.
+    /// The project the checked paths are in: the one around each, or, for a
+    /// path in none, the one around the working directory, as when it's
+    /// checked alone. Paths that get two projects, or a project and none,
+    /// are an error, since a run has one config.
     pub fn project_for<'p>(
         &self,
         paths: impl IntoIterator<Item = &'p Path>,
     ) -> Result<Option<PathBuf>> {
-        let mut found: Option<(&Path, PathBuf)> = None;
+        let here = self.project();
+        let mut found: Option<(&Path, Option<PathBuf>)> = None;
         let files = paths.into_iter().filter(|p| p.as_os_str() != walk::STDIN);
         for path in files {
             let absolute = self.absolute(path);
@@ -139,24 +141,30 @@ impl Ctx {
             } else {
                 absolute.parent().unwrap_or(&absolute)
             };
-            let Some(root) = find_project(start, self.home.as_deref()) else {
-                continue;
-            };
+            let root = find_project(start, self.home.as_deref()).or_else(|| here.clone());
             match &found {
                 Some((first, other)) if *other != root => {
                     return Err(Error::Usage(format!(
-                        "{} is in the project at {}, and {} in the one at {}; check each project on its own",
+                        "{} is in {}, and {} in {}; check each project on its own",
                         first.display(),
-                        self.display(other),
+                        self.place(other.as_deref()),
                         path.display(),
-                        self.display(&root)
+                        self.place(root.as_deref())
                     )));
                 }
                 Some(_) => {}
                 None => found = Some((path, root)),
             }
         }
-        Ok(found.map(|(_, root)| root).or_else(|| self.project()))
+        Ok(found.map_or(here, |(_, root)| root))
+    }
+
+    /// Where a path is, for messages: "the project at ROOT" or "no project".
+    fn place(&self, root: Option<&Path>) -> String {
+        root.map_or_else(
+            || "no project".into(),
+            |root| format!("the project at {}", self.display(root)),
+        )
     }
 }
 
@@ -322,7 +330,7 @@ mod tests {
         }
         let elsewhere = dir.path().join("elsewhere");
         fs::create_dir_all(&elsewhere).unwrap();
-        let c = Ctx::new(elsewhere, None, None, false);
+        let c = Ctx::new(elsewhere.clone(), None, None, false);
         let found = |paths: &[&str]| c.project_for(paths.iter().map(Path::new));
 
         assert_eq!(found(&["../a/docs/x.md"]).unwrap(), Some(a.clone()));
@@ -332,11 +340,20 @@ mod tests {
             found(&["../a/docs", "../b/docs/x.md"]),
             Err(Error::Usage(_))
         ));
+        // Alone, notes.md gets no project, so it can't share a's.
+        assert_eq!(found(&["notes.md"]).unwrap(), None);
+        assert!(matches!(
+            found(&["../a/docs", "notes.md"]),
+            Err(Error::Usage(_))
+        ));
 
         let inside = Ctx::new(a.join("docs"), None, None, false);
         let paths = [Path::new("../../b/docs/x.md")];
         assert_eq!(inside.project_for(paths).unwrap(), Some(b));
-        assert_eq!(inside.project_for([]).unwrap(), Some(a));
+        assert_eq!(inside.project_for([]).unwrap(), Some(a.clone()));
+        // A path in no project gets the working directory's, as alone.
+        let paths = [Path::new("x.md"), &elsewhere];
+        assert_eq!(inside.project_for(paths).unwrap(), Some(a));
     }
 
     #[test]

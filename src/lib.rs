@@ -50,6 +50,8 @@
 //! ```
 
 pub mod config;
+#[doc(hidden)]
+pub mod contain;
 pub mod ctx;
 #[doc(hidden)]
 pub mod english;

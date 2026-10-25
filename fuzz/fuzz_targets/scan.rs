@@ -19,7 +19,7 @@ use proserunner::format::{self, Output};
 use proserunner::report::{self, Document};
 use proserunner::rules::{self, RuleSet, RuleSource};
 use proserunner::scan::{self, Format, Options, Scope};
-use proserunner::{lint, prose};
+use proserunner::{contain, lint, prose};
 
 /// The built-in rules, and one that matches every word, so that spans all
 /// over each document get checked.
@@ -44,7 +44,8 @@ fn on_boundaries(source: &str, start: usize, end: usize) {
     );
 }
 
-fuzz_target!(|data: &[u8]| {
+// libfuzzer's hook aborts on any panic, even one a scanner catches.
+fuzz_target!(init: contain::quiet_hook(), |data: &[u8]| {
     let Some((&first, rest)) = data.split_first() else {
         return;
     };

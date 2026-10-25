@@ -19,9 +19,11 @@ use super::decoded::{self, Escapes};
 use super::front_matter::{self, Syntax};
 use super::view::ViewBuilder;
 use super::{Block, Options, Scanned, Scope, html, markdown as commonmark};
+use crate::contain;
 
 pub(super) fn scan(source: &str, options: Options<'_>) -> Scanned {
-    let Ok(root) = parse(source) else {
+    // markdown-rs panics on some input, such as `<A>x⏎---⏎`.
+    let Some(Ok(root)) = contain::catch(|| parse(source)) else {
         return commonmark::scan(source, options);
     };
     let mut s = Scanner {
@@ -309,6 +311,15 @@ mod tests {
     fn invalid_mdx_is_read_as_markdown() {
         let src = "Text with <Unclosed and utilize.\n";
         assert_eq!(prose(src), ["Text with <Unclosed and utilize."]);
+    }
+
+    #[test]
+    fn mdx_markdown_rs_panics_on_is_read_as_markdown() {
+        let src = "<Note>A title\n---\n";
+        assert_eq!(
+            levels(&scan(src, Options::default()).blocks),
+            [("\u{1A}A title", Some(2))]
+        );
     }
 
     #[test]
