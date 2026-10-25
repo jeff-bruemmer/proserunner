@@ -71,37 +71,27 @@ targets are never checked, and code and quoted text only with
 
 ## Rules
 
-22 rules are built in, pinned to the release: `annotations`,
-`archaisms`, `cliches`, `compression`, `corporate-speak`,
-`heading-periods`, `hedging`, `jargon`, `meta-discourse`,
-`needless-variants`, `nominalization`, `non-words`, `not-the-negative`,
-`overused-adverbs`, `oxymorons`, `phrasal-adjectives`, `pompous-diction`,
-`redundancies`, `repetition`, `sexism`, `skunked-terms` and
-`weasel-words`. Each one's id is `default/<name>`, and
-`proserunner explain NAME` shows what it matches.
-
-`repetition`, `annotations` and `non-words` are errors.
-`overused-adverbs`, `hedging`, `weasel-words` and `skunked-terms` are
-hints, which don't make a run exit 1. The rest are warnings.
+The built-in rules find clichés, redundancies, jargon, hedging,
+gendered terms, repeated words and more, and they're pinned to the
+release. `proserunner rules` lists them with their levels, and
+`proserunner explain NAME` shows what one matches. Errors are
+near-certain mistakes, hints are style advice that doesn't make a run
+exit 1, and the rest are warnings.
 
 ## Make it yours
 
-- **Config:** turn rules off, change their levels, and accept words
-  ([Config](docs/config.md)). `proserunner rules set hedging off` writes
-  it for you. A config can `extends` a team's shared one.
+- **Config:** turn rules off, change their levels, and accept words,
+  for a project or some of its paths ([Config](docs/config.md)).
+  `proserunner rules set hedging off` writes it for you. A config can
+  `extends` a team's shared one.
 
   ```toml
   # .proserunner/config.toml
   schema = 1
-  extends = ["../house-style/config.toml"]
   accept = ["Kubernetes"]
 
   [rule."default/hedging"]
   level = "off"
-
-  [[overrides]]
-  paths = ["docs/legal/"]
-  rule."default/jargon".level = "error"
   ```
 
 - **Your own rules:** words, patterns and terms, and checks for mixed
@@ -136,15 +126,10 @@ and the run exits 2.
 
 ## Editors and CI
 
-| `-o` | For |
-| --- | --- |
-| `group` | People (the default) |
-| `plain` | `path:line:col: [n] "match" -> message (rule)`, for Vim's quickfix, Emacs compile mode and grep |
-| `table`, `verbose` | Markdown reports |
-| `json` | Programs ([format](docs/formats.md#json-output)) |
-| `sarif` | Code scanning (SARIF 2.1.0) |
-| `github` | GitHub Actions annotations |
-| `checkstyle` | reviewdog, Jenkins and other tools that read Checkstyle XML |
+`-o plain` prints one issue per line, for Vim's quickfix, Emacs compile
+mode and grep. `json` ([format](docs/formats.md#json-output)), `sarif`,
+`github` (Actions annotations) and `checkstyle` (reviewdog, Jenkins) are
+for programs and CI, and `table` and `verbose` write Markdown reports.
 
 For [pre-commit](https://pre-commit.com), this repository is a hook:
 

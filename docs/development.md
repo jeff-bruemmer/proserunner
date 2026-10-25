@@ -44,8 +44,6 @@ to the source, and returns `Scanned { blocks, directives }`.
   pattern that runs out is recorded in `Linted::exhausted`.
 - Word edges are checked after matching, so the automata stay on their
   fast paths.
-- Only patterns whose messages use their groups (`Target::captures`)
-  run `captures_iter`.
 - **Checks** (`src/rules/checks/`) are variants of the sealed `Check`
   enum. Their issues resolve like an entry's: per rule, the longest of
   overlapping matches wins, and `except` applies.

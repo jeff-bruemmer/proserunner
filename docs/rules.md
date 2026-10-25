@@ -117,12 +117,10 @@ terms = [
 ]
 ```
 
-- **`match`:** other spellings to find, in any case, with braces as in
-  `words`.
-- **Edges** are as in `words`.
-- **Longest match:** with both "GitHub" and "GitHub Actions" in
-  `terms`, "Github actions" is one issue.
-- **Table keys:** `term`, `match`, `message` and `level`.
+A table takes `term`, `match` (other spellings to find, with braces as
+in `words`), `message` and `level`. Terms have the word edges `words`
+have, and the longest match wins: with both "GitHub" and
+"GitHub Actions" in `terms`, "Github actions" is one issue.
 
 ## Entries
 
@@ -152,8 +150,6 @@ acronyms = { except = ["HTML", "URL"] }
 
 - **Scope:** a check looks only at the blocks its rule's `scope` and
   `heading-levels` cover.
-- **Overlaps:** one check's issues don't hide another's, or an entry's,
-  so a long sentence doesn't hide a word in it.
 - **`except`** drops a check's issues, and an excepted match doesn't
   count for `consistent` or `acronyms`.
 - **Counts** are of the text the rules see: quoted text is masked, and
@@ -253,19 +249,9 @@ Reports text whose readability score, as a U.S. school grade, is over
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `max` | (required) | The highest grade allowed |
-| `formula` | `"flesch-kincaid"` | One of the formulas below |
+| `formula` | `"flesch-kincaid"` | `"flesch-kincaid"`, `"gunning-fog"`, `"coleman-liau"` or `"automated-readability"` |
 | `per` | `"document"` | `"document"`: every block the rule applies to, together. `"block"`: each block |
 | `min-words` | `100` | Text with fewer words isn't scored |
-
-| Formula | Grade |
-| --- | --- |
-| `flesch-kincaid` | 0.39 × words per sentence + 11.8 × syllables per word − 15.59 |
-| `gunning-fog` | 0.4 × (words per sentence + 100 × the share of words with three syllables or more) |
-| `coleman-liau` | 0.0588 × letters per 100 words − 0.296 × sentences per 100 words − 15.8 |
-| `automated-readability` | 4.71 × letters per word + 0.5 × words per sentence − 21.43 |
-
-Syllables are counted from runs of vowels, less a silent final `e`,
-`-ed` or `-es`.
 
 ## Messages
 

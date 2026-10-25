@@ -120,7 +120,8 @@ other config to its directory. `~/` is your home directory.
 
 ## Extends
 
-A config can build on others, such as a style a team shares:
+A config can build on others, such as a team's style in a git
+submodule:
 
 ```toml
 # ../house-style/config.toml
@@ -134,9 +135,6 @@ accept = ["Kubernetes"]
 - **Rules** add up: a config gets the rules of those it extends, so a
   project that extends this one gets the built-in rules, `house/…` and
   its own. Turn some off with `[rule."house/*"]`.
-- **Paths** in an extended config are relative to its own directory.
-- **Sharing:** proserunner never uses the network, so share a style as
-  files, such as a git submodule.
 - **Once:** a config extended twice is read once, below everything that
   extends it.
 - **Mistakes:** a missing file, a cycle, and `inherit` in an extended
@@ -202,8 +200,6 @@ $ proserunner document.md --no-ignores            # A run without ignores
 - **Words** match like `accept`.
 - **Comments** you add are kept, and a file that doesn't parse is never
   overwritten.
-- **0.8 paths:** `audit` and `clean` leave alone a relative `file` in
-  the global list, since it's relative to wherever you run proserunner.
 
 ```toml
 schema = 1
