@@ -1,0 +1,15 @@
+---
+source: tests/golden.rs
+expression: "plain(&[\"resources/formats/front-matter.md\",\n\"resources/formats/front-matter-toml.md\",\n\"resources/formats/front-matter.mdx\",])"
+---
+resources/formats/front-matter-toml.md:2:10: [1] "Utilize" -> Prefer: use. (default/needless-variants)
+resources/formats/front-matter-toml.md:5:3: [2] "very" -> Overused adverb: cut it, or use a stronger verb. (default/overused-adverbs)
+resources/formats/front-matter.md:2:10: [3] "very" -> Overused adverb: cut it, or use a stronger verb. (default/overused-adverbs)
+resources/formats/front-matter.md:2:27: [4] "." -> Heading ends with a period: delete it. (default/heading-periods)
+resources/formats/front-matter.md:3:21: [5] "quick as lightning" -> Cliché: say it in your own words. (default/cliches)
+resources/formats/front-matter.md:5:3: [6] "In order to" -> Prefer: to. (default/compression)
+resources/formats/front-matter.md:5:22: [7] "utilize" -> Prefer: use. (default/needless-variants)
+resources/formats/front-matter.md:7:36: [8] "in order to" -> Prefer: to. (default/compression)
+resources/formats/front-matter.md:18:31: [9] "hopefully" -> Skunked term: rephrase to avoid it. (default/skunked-terms)
+resources/formats/front-matter.mdx:2:8: [10] "Quick as lightning" -> Cliché: say it in your own words. (default/cliches)
+resources/formats/front-matter.mdx:3:16: [11] "very" -> Overused adverb: cut it, or use a stronger verb. (default/overused-adverbs)

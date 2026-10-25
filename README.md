@@ -84,7 +84,7 @@ turns it off, and `CLICOLOR_FORCE` keeps it in a pipe.
 
 | Files | Prose | Not prose |
 | --- | --- | --- |
-| `.md`, `.markdown` | Paragraphs, headings, list items, table cells, block quotes | Code, HTML, front matter, link targets |
+| `.md`, `.markdown` | Paragraphs, headings, list items, table cells, block quotes, front matter titles and descriptions | Code, HTML, other front matter, link targets |
 | `.mdx` | What Markdown reads, and the content of JSX elements | `import` and `export`, expressions, JSX attributes, code |
 | `.org` | The title, headlines, paragraphs, list items, table cells, quote blocks | Source blocks, drawers, other keywords, comments, `COMMENT` subtrees, link targets |
 | `.txt` | Paragraphs | Lines between ```` ``` ```` fences |

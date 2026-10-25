@@ -11,8 +11,9 @@ change in detail.
 ### Behaviour changes
 
 - Each format is read with an established parser for it: Markdown with
-  pulldown-cmark, and Org with orgize. Code, HTML, front matter, link
-  targets and Org drawers are no longer checked.
+  pulldown-cmark, and Org with orgize. Code, HTML, link targets and Org
+  drawers are no longer checked, and of front matter, only the strings
+  under keys such as `title` and `description` are.
 - Phrases match across line breaks and inline markup.
 - `words` are literal, and only `patterns` are regular expressions. 0.8's
   checks convert to the same matches.
@@ -78,6 +79,11 @@ change in detail.
   of an AsciiDoc conditional is checked.
 - `--stdin-format`, and `--stdin-filename` to check standard input as a
   file, with its format, project, overrides and ignores, as editors need.
+- Prose in YAML and TOML front matter, in Markdown and MDX: the strings
+  under `title`, `subtitle`, `description`, `summary`, `abstract` and
+  `excerpt`, with the title as the document's title, so heading rules
+  check it. `check.front-matter` chooses the keys, as paths such as
+  `params.summary`.
 - `--no-quoted-text` and `--no-code-blocks`, to override config.
 - Warnings, never silence, when a backtracking pattern gives up in a
   block, or when the patterns are too large to filter together.

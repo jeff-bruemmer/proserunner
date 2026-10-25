@@ -45,7 +45,7 @@ use crate::fsutil;
 use crate::ignores;
 use crate::prose;
 use crate::rules::{self, DEFAULT_SOURCE, Level};
-use crate::scan::Format;
+use crate::scan::{self, Format};
 use crate::settings::{self, Problems};
 use crate::typo;
 
@@ -131,6 +131,11 @@ pub struct CheckTable {
     pub quoted_text: Option<bool>,
     /// Check code blocks too.
     pub code_blocks: Option<bool>,
+    /// The front matter keys whose strings are checked, as dotted paths
+    /// from the top level, such as `params.summary`. Replaces the list
+    /// below; `[]` checks no front matter. By default: title, subtitle,
+    /// description, summary, abstract and excerpt.
+    pub front_matter: Option<Vec<String>>,
     /// How issues are printed when `--output` doesn't say.
     pub output: Option<Output>,
 }
@@ -516,6 +521,8 @@ pub struct Config {
     pub quoted_text: Sourced<bool>,
     /// Whether code blocks are checked.
     pub code_blocks: Sourced<bool>,
+    /// The front matter keys whose strings are checked.
+    pub front_matter: Sourced<Vec<String>>,
     /// How issues are printed when `--output` doesn't say.
     pub output: Sourced<Output>,
     /// In order: a later row wins.
@@ -570,6 +577,9 @@ impl Default for Config {
             exclude: Paths::default(),
             quoted_text: Sourced::built_in(false),
             code_blocks: Sourced::built_in(false),
+            front_matter: Sourced::built_in(
+                scan::FRONT_MATTER.iter().map(|k| (*k).to_owned()).collect(),
+            ),
             output: Sourced::built_in(Output::default()),
             formats: Vec::new(),
             rule: BTreeMap::new(),
@@ -862,6 +872,18 @@ fn apply(
     }
     if let Some(v) = f.check.code_blocks {
         config.code_blocks = Sourced::new(v, origin);
+    }
+    if let Some(keys) = f.check.front_matter {
+        let mistakes: Vec<String> = keys
+            .iter()
+            .filter_map(|k| front_matter_key(k).err())
+            .collect();
+        if mistakes.is_empty() {
+            config.front_matter = Sourced::new(keys, origin);
+        }
+        for m in mistakes {
+            problems.add(m);
+        }
     }
     if let Some(v) = f.check.output {
         config.output = Sourced::new(v, origin);
@@ -1271,6 +1293,18 @@ impl Config {
             &self.code_blocks.value.to_string(),
             &self.code_blocks.origin,
         );
+        let keys: Vec<String> = self
+            .front_matter
+            .value
+            .iter()
+            .map(|k| settings::quote(k))
+            .collect();
+        line(
+            &mut out,
+            "front-matter",
+            &format!("[{}]", keys.join(", ")),
+            &self.front_matter.origin,
+        );
         line(
             &mut out,
             "output",
@@ -1330,6 +1364,17 @@ impl Config {
             }
         }
         out
+    }
+}
+
+/// An error unless every part of `key`'s dotted path has a name.
+fn front_matter_key(key: &str) -> Result<(), String> {
+    if key.split('.').any(str::is_empty) {
+        Err(format!(
+            "invalid front-matter key `{key}`: name each key on its path, as in `params.summary`"
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -1495,6 +1540,35 @@ mod tests {
     }
 
     #[test]
+    fn front_matter_keys_replace_lower_layers() {
+        let defaults = merge(&ctx(), vec![]).unwrap();
+        assert_eq!(defaults.front_matter.value, scan::FRONT_MATTER);
+        let user = layer(
+            LayerKind::User,
+            "/u",
+            "u",
+            "schema = 1\n[check]\nfront-matter = [\"title\", \"params.summary\"]",
+        );
+        let c = merge(&ctx(), vec![user]).unwrap();
+        assert_eq!(c.front_matter.value, ["title", "params.summary"]);
+        let project = layer(
+            LayerKind::Project,
+            "/work/proj",
+            "p",
+            "schema = 1\n[check]\nfront-matter = []",
+        );
+        let user = layer(
+            LayerKind::User,
+            "/u",
+            "u",
+            "schema = 1\n[check]\nfront-matter = [\"title\"]",
+        );
+        let c = merge(&ctx(), vec![user, project]).unwrap();
+        assert!(c.front_matter.value.is_empty());
+        assert_eq!(c.front_matter.origin, "p");
+    }
+
+    #[test]
     fn inherit_false_drops_lower_layers_and_their_ignores() {
         let user = layer(
             LayerKind::User,
@@ -1550,6 +1624,13 @@ mod tests {
                 .contains("`*` only stands for every rule from a source")
         );
         assert!(bad("schema = 1\naccept = [\" \"]").contains("can't be empty"));
+        for key in ["", "params..summary", ".title", "title."] {
+            let text = format!("schema = 1\n[check]\nfront-matter = [\"title\", \"{key}\"]");
+            assert!(
+                bad(&text).starts_with(&format!("u.toml: invalid front-matter key `{key}`")),
+                "{key:?}"
+            );
+        }
     }
 
     #[test]
@@ -1688,6 +1769,10 @@ mod tests {
         let text = merge(&ctx(), vec![user]).unwrap().render(&ctx());
         assert!(
             text.contains("fail-on = \"warning\"  # built-in default"),
+            "{text}"
+        );
+        assert!(
+            text.contains("front-matter = [\"title\", \"subtitle\", \"description\", \"summary\", \"abstract\", \"excerpt\"]  # built-in default"),
             "{text}"
         );
         assert!(

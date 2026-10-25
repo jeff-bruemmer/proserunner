@@ -12,7 +12,9 @@
 mod asciidoc;
 mod block;
 mod control;
+mod decoded;
 mod format;
+mod front_matter;
 mod html;
 mod markdown;
 mod mask;
@@ -31,20 +33,46 @@ pub use format::{DOCUMENTS, DocumentFormat, Format};
 pub use mask::Mask;
 pub(crate) use view::PLACEHOLDER;
 
-/// What a scan hides from the rules besides markup. By default, quoted
-/// text and code blocks.
+/// What a scan hides from the rules besides markup, and which front
+/// matter it reads. By default, quoted text and code blocks are hidden,
+/// and the strings under the keys in [`FRONT_MATTER`] are prose.
 // Scanners hold this as `Options<'src>`: both it and the source are shared
 // borrows, so one lifetime covers the two.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct Options<'mask> {
+pub struct Options<'config> {
     /// Check quoted text too. By default it's masked.
     pub quoted_text: bool,
     /// Check code blocks too. By default they're skipped.
     pub code_blocks: bool,
     /// Config `mask` patterns.
-    pub mask: Option<&'mask Mask>,
+    pub mask: Option<&'config Mask>,
+    /// The front matter keys whose strings are prose, as dotted paths from
+    /// the top level, such as `params.summary`. Empty reads no front
+    /// matter.
+    pub front_matter: &'config [&'config str],
 }
+
+impl Default for Options<'_> {
+    fn default() -> Self {
+        Options {
+            quoted_text: false,
+            code_blocks: false,
+            mask: None,
+            front_matter: FRONT_MATTER,
+        }
+    }
+}
+
+/// The front matter keys whose strings are prose by default.
+pub const FRONT_MATTER: &[&str] = &[
+    "title",
+    "subtitle",
+    "description",
+    "summary",
+    "abstract",
+    "excerpt",
+];
 
 /// A byte order mark. Scanners never see one; offsets still count it.
 pub const BOM: &str = "\u{FEFF}";
@@ -89,6 +117,15 @@ mod tests {
         let head = &scanned.blocks[0];
         assert_eq!(head.kind, Scope::Heading);
         assert_eq!(&src[head.source_range(src, 0..4)], "Head");
+    }
+
+    #[test]
+    fn front_matter_after_a_byte_order_mark() {
+        let src = "\u{FEFF}---\ntitle: A title\n---\n";
+        let scanned = scan(Format::Markdown, src, Options::default());
+        let title = &scanned.blocks[0];
+        assert_eq!(levels(&scanned.blocks), [("A title", Some(0))]);
+        assert_eq!(&src[title.source_range(src, 0..7)], "A title");
     }
 
     #[test]

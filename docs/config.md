@@ -45,10 +45,11 @@ accept  = ["Kubernetes"]          # never reported by any rule
 mask    = ['\{\{<.*?>\}\}']       # Hugo shortcodes: no rule sees them
 
 [check]
-exclude     = ["drafts/", "*.draft.md"]
-quoted-text = false
-code-blocks = false
-output      = "group"
+exclude      = ["drafts/", "*.draft.md"]
+quoted-text  = false
+code-blocks  = false
+front-matter = ["title", "description", "params.summary"]
+output       = "group"
 
 [formats]
 "*.mdx" = "markdown"              # MDX files are checked as Markdown
@@ -79,6 +80,7 @@ rule."default/hedging".level = "error"
 | `check.exclude` | none | Files to skip, as [path patterns](#path-patterns) |
 | `check.quoted-text` | `false` | Check quoted text too |
 | `check.code-blocks` | `false` | Check code blocks too |
+| `check.front-matter` | `title`, `subtitle`, `description`, `summary`, `abstract`, `excerpt` | Front matter keys whose strings are prose; `[]` for none (see [Front matter](formats.md#front-matter)) |
 | `check.output` | `"group"` | The output format |
 | `formats` | none | Formats for files by path pattern (see [Formats](#formats)) |
 | `rule."ID".level` | the rule's own | `"off"`, `"hint"`, `"warning"` or `"error"`, for every entry in the rule, even one with a level of its own |

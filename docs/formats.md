@@ -76,29 +76,67 @@ CommonMark, with tables, footnotes, strikethrough, task lists, and YAML
 (`---`) or TOML (`+++`) front matter.
 
 - **Prose:** paragraphs, headings, list items, table cells (one block
-  each), block quotes, and footnote text.
+  each), block quotes, footnote text, and the title and description in
+  front matter (see [Front matter](#front-matter)).
 - **Placeholders:** inline code, inline HTML, autolinks (`<https://…>`),
   and footnote references.
   `$…$` is text: Markdown has no math.
-- **Skipped:** code blocks, HTML blocks, front matter, and link and image
-  targets. A link's text is prose.
+- **Skipped:** code blocks, HTML blocks, the rest of front matter, and
+  link and image targets. A link's text is prose.
 
 ## MDX
 
 MDX as `@mdx-js/mdx` reads it: Markdown, with the same extensions, plus
 ESM, JSX and expressions.
 
-- **Prose:** what's prose in Markdown, and the content of JSX elements,
-  such as `<Note>…</Note>`.
+- **Prose:** what's prose in Markdown, front matter included, and the
+  content of JSX elements, such as `<Note>…</Note>`.
 - **Placeholders:** inline code, images, footnote references,
   expressions in a sentence (`{props.year}`), and HTML elements that hold
   no prose, such as `<code>` and `<kbd>`.
 - **Skipped:** ESM (`import` and `export`), expressions on lines of their
-  own, JSX attributes, code blocks and front matter.
+  own, JSX attributes, code blocks and the rest of front matter.
 
 ESM ends where its brackets balance, as markdown-rs reads an expression
 when it has no JavaScript parser. A file that isn't valid MDX, such as
 one with an unclosed tag, is read as Markdown.
+
+## Front matter
+
+YAML between `---` lines, or TOML between `+++` lines, that opens a
+Markdown or MDX file, as Jekyll and Hugo read it. A `---` anywhere else
+is a thematic break. YAML is read with
+[saphyr-parser](https://crates.io/crates/saphyr-parser), and TOML with
+[toml](https://crates.io/crates/toml).
+
+```yaml
+---
+title: Getting started      # the document's title
+description: How to begin.  # a paragraph
+layout: docs                # not checked
+---
+```
+
+- **Prose:** the strings under `title`, `subtitle`, `description`,
+  `summary`, `abstract` and `excerpt`. `title` and `subtitle` are the
+  document's title (heading level 0), so heading rules check them, and
+  the rest are paragraphs. Each string is a block of its own, at any
+  depth under its key, such as each item of a list.
+- **Choosing keys:** `check.front-matter` in config replaces the list,
+  and `[]` reads no front matter. A key is a path from the top level,
+  with `.` between keys: `params.summary` is the `summary` inside
+  `params`, and `summary` alone is only the top-level one. Lists on the
+  way are passed through, so `faq.answer` is every item's `answer`.
+- **Text:** escapes are decoded (`\"`, `\u00E9`, `''`) and lines folded,
+  as YAML and TOML read them, and each issue still points at the source.
+  The strings are plain text: Markdown in them isn't markup.
+- **Not prose:** keys, comments, and TOML's numbers, dates and booleans.
+  YAML's plain `2024` under a prose key is text.
+- **Mistakes:** front matter that isn't valid YAML or TOML isn't checked.
+  Each parser finds front matter its own way: in Markdown, YAML front
+  matter can also end with `...`, and can't start with a blank line.
+- **Inline control** can't reach front matter (see
+  [Inline control](#inline-control)).
 
 ## Org
 
@@ -238,7 +276,7 @@ inside adds one.
 
 | Format | Level 0 | Levels 1 and on |
 | --- | --- | --- |
-| Markdown and MDX | none | `#` is 1, `##` 2, and so on to `######`. In Markdown, an `===` underline is 1, and `---` is 2 |
+| Markdown and MDX | `title` and `subtitle` in front matter | `#` is 1, `##` 2, and so on to `######`. In Markdown, an `===` underline is 1, and `---` is 2 |
 | Org | `#+TITLE` and `#+SUBTITLE` | The number of stars |
 | Plain text | none | none: plain text has no headings |
 | HTML | `<title>` | `<h1>` is 1, `<h2>` 2, and so on to `<h6>` |
@@ -275,6 +313,9 @@ proserunner-disable-next-line [ids…]   rules off on the next line only
   `proserunner-disable` turns only that rule back on.
 - **Next line:** `proserunner-disable-next-line` covers the line after the
   one the comment ends on, so put it directly above the line.
+- **Front matter:** no directive reaches it, since nothing comes before
+  it and YAML and TOML comments aren't read. Use `--ignore-issues` or
+  `accept` for an issue there.
 - **Mistakes:** a misspelled directive, or an id of a rule from a source
   this run loads that names no rule, stops the run with an error at the
   directive's file, line and column. So does a name without its source,

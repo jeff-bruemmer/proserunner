@@ -102,8 +102,10 @@ these ways:
   start of the next.
 - **Repeated words:** they're found in any case: "The the".
 - **Case:** case folding covers every letter, so `über` matches `Über`.
-- **Markup:** inline code, HTML, front matter, link targets, URLs and
-  email addresses are never checked.
+- **Markup:** inline code, HTML, link targets, URLs and email addresses
+  are never checked, and of front matter, only the strings under keys
+  such as `title` and `description` are (see
+  [Front matter](formats.md#front-matter)).
 - **Org:** it's read as its own format, not as plain text: drawers,
   source blocks and link targets aren't prose, for example. See
   [File formats](formats.md).

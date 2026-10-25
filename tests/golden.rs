@@ -75,6 +75,15 @@ fn mdx() {
     insta::assert_snapshot!(plain(&["resources/formats/drivel.mdx"]));
 }
 
+#[test]
+fn front_matter() {
+    insta::assert_snapshot!(plain(&[
+        "resources/formats/front-matter.md",
+        "resources/formats/front-matter-toml.md",
+        "resources/formats/front-matter.mdx",
+    ]));
+}
+
 /// Every format but `plain`, on one file, so a change to what a format
 /// writes shows up as a diff too.
 #[test]

@@ -2,10 +2,11 @@
 //! does: CommonMark with GFM tables, footnotes, strikethrough and task
 //! lists, and front matter, plus ESM, JSX and expressions. Prose is what
 //! it is in Markdown, and the content of JSX elements is prose too, unless
-//! the element is HTML that holds none, such as `<code>` or `<script>`.
-//! ESM (`import`, `export`) and expressions (`{…}`) aren't prose; an
-//! expression in a sentence is a placeholder. Inline control directives go
-//! in comment expressions: `{/* proserunner-disable */}`.
+//! the element is HTML that holds none, such as `<code>` or `<script>`,
+//! and so are the strings `front_matter` reads. ESM (`import`, `export`)
+//! and expressions (`{…}`) aren't prose; an expression in a sentence is a
+//! placeholder. Inline control directives go in comment expressions:
+//! `{/* proserunner-disable */}`.
 //!
 //! A file that isn't valid MDX is read as Markdown.
 
@@ -14,6 +15,8 @@ use markdown::message::Message;
 use markdown::{Constructs, MdxSignal, ParseOptions, to_mdast};
 
 use super::control::{self, Directive};
+use super::decoded::{self, Escapes};
+use super::front_matter::{self, Syntax};
 use super::view::ViewBuilder;
 use super::{Block, Options, Scanned, Scope, html, markdown as commonmark};
 
@@ -97,14 +100,15 @@ impl Scanner<'_> {
             Node::Code(code) if self.options.code_blocks => {
                 let mut view = ViewBuilder::new(Scope::Code, None);
                 if let Some((start, end)) = range(node) {
-                    let raw = self.source.get(start..end).unwrap_or("");
-                    match raw.find(code.value.as_str()) {
-                        Some(k) => view.push_source(&code.value, start + k),
+                    match self.fenced(start, end, &code.value) {
+                        Some(at) => view.push_source(&code.value, at),
                         None => view.push_rewritten(&code.value, start..end),
                     }
                 }
                 self.blocks.extend(view.finish());
             }
+            Node::Yaml(yaml) => self.front_matter(node, &yaml.value, Syntax::Yaml),
+            Node::Toml(toml) => self.front_matter(node, &toml.value, Syntax::Toml),
             Node::MdxJsxFlowElement(element) => match element.name.as_deref() {
                 Some(name) if html::is_opaque(name) => {}
                 _ => self.children(node, scope),
@@ -113,9 +117,27 @@ impl Scanner<'_> {
             Node::Root(_) | Node::Table(_) | Node::TableRow(_) | Node::FootnoteDefinition(_) => {
                 self.children(node, scope)
             }
-            // ESM, front matter, code, math, definitions and breaks.
+            // ESM, code, math, definitions and breaks.
             _ => {}
         }
+    }
+
+    /// Front matter whose text is `value`.
+    fn front_matter(&mut self, node: &Node, value: &str, syntax: Syntax) {
+        let Some(at) = range(node).and_then(|(start, end)| self.fenced(start, end, value)) else {
+            return;
+        };
+        let blocks = front_matter::blocks(syntax, value, at, self.options.front_matter);
+        self.blocks.extend(blocks);
+    }
+
+    /// Where `value`, the text of the fenced node at `start..end`, starts
+    /// in the source: after the opening fence's line, so a fence's own
+    /// characters are never taken for it. MDX has no indented code.
+    fn fenced(&self, start: usize, end: usize, value: &str) -> Option<usize> {
+        let raw = self.source.get(start..end)?;
+        let open = raw.find('\n')? + 1;
+        raw[open..].find(value).map(|k| start + open + k)
     }
 
     /// A block of prose: `node`'s inline content.
@@ -153,53 +175,11 @@ impl Scanner<'_> {
     }
 
     /// `value`, text that markdown-rs read from source `start..end`, with
-    /// escapes and references decoded and indentation left out. What
-    /// matches the source is source text.
+    /// escapes and references decoded and indentation left out.
     fn text(&self, view: &mut ViewBuilder, value: &str, start: usize, end: usize) {
-        let Some(raw) = self.source.get(start..end) else {
-            view.push_rewritten(value, start..end);
-            return;
-        };
-        let (mut i, mut j) = (0, 0);
-        while let Some(want) = value[j..].chars().next() {
-            let run = raw[i..]
-                .bytes()
-                .zip(value[j..].bytes())
-                .take_while(|(a, b)| a == b)
-                .count();
-            let run = (0..=run)
-                .rev()
-                .find(|&k| raw.is_char_boundary(i + k))
-                .unwrap_or(0);
-            if run > 0 {
-                view.push_source(&raw[i..i + run], start + i);
-                (i, j) = (i + run, j + run);
-                continue;
-            }
-            let rest = &raw[i..];
-            let decoded = match rest.chars().next() {
-                Some('\\') if rest[1..].starts_with(want) => {
-                    Some((1 + want.len_utf8(), want.to_string()))
-                }
-                Some('&') => {
-                    html::reference(rest).filter(|(_, d)| value[j..].starts_with(d.as_str()))
-                }
-                _ => None,
-            };
-            match (decoded, rest.chars().next()) {
-                (Some((len, text)), _) => {
-                    view.push_rewritten(&text, start + i..start + i + len);
-                    (i, j) = (i + len, j + text.len());
-                }
-                (None, Some(c)) if c.is_whitespace() => {
-                    view.space(start + i);
-                    i += c.len_utf8();
-                }
-                _ => {
-                    view.push_rewritten(&value[j..], start + i..end);
-                    return;
-                }
-            }
+        match self.source.get(start..end) {
+            Some(raw) => decoded::push(view, value, raw, start, Escapes::Markdown),
+            None => view.push_rewritten(value, start..end),
         }
     }
 
@@ -255,7 +235,7 @@ mod tests {
 
     #[test]
     fn markdown_constructs() {
-        let src = "---\ntitle: utilize\n---\n\n- [ ] item\n\n> quoted\n\n| a | b |\n| - | - |\n| c | d |\n\nText.[^1] ~~gone~~\n\n[^1]: A note.\n\n```js\nutilize()\n```\n";
+        let src = "---\nlayout: utilize\n---\n\n- [ ] item\n\n> quoted\n\n| a | b |\n| - | - |\n| c | d |\n\nText.[^1] ~~gone~~\n\n[^1]: A note.\n\n```js\nutilize()\n```\n";
         assert_eq!(
             prose(src),
             [
@@ -279,6 +259,39 @@ mod tests {
             &src[code.source_range(src, 0..code.text.len())],
             "utilize()"
         );
+    }
+
+    #[test]
+    fn front_matter_is_read() {
+        let src = "---\r\ntitle: A very unique title\r\nlayout: utilize\r\n---\r\n\nText.\n";
+        let blocks = scan(src, Options::default()).blocks;
+        assert_eq!(
+            levels(&blocks),
+            [("A very unique title", Some(0)), ("Text.", None)]
+        );
+        let b = &blocks[0];
+        let i = b.text.find("very unique").unwrap();
+        assert_eq!(&src[b.source_range(src, i..i + 11)], "very unique");
+
+        let src = "+++\ndescription = 'In order to start.'\n+++\n\nText.\n";
+        assert_eq!(prose(src), ["In order to start.", "Text."]);
+    }
+
+    #[test]
+    fn front_matter_in_invalid_mdx_is_read_as_markdown() {
+        let src = "---\ntitle: A title\n---\n\nText with <Unclosed.\n";
+        assert_eq!(prose(src), ["A title", "Text with <Unclosed."]);
+    }
+
+    #[test]
+    fn code_maps_past_its_fence() {
+        let options = Options {
+            code_blocks: true,
+            ..Options::default()
+        };
+        let src = "```js\njs\n```\n";
+        let b = &scan(src, options).blocks[0];
+        assert_eq!(b.source_range(src, 0..2), 6..8);
     }
 
     #[test]

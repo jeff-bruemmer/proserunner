@@ -18,6 +18,13 @@
           },
           "type": "array"
         },
+        "front-matter": {
+          "description": "The front matter keys whose strings are checked, as dotted paths from the top level, such as `params.summary`. Replaces the list below; `[]` checks no front matter. By default: title, subtitle, description, summary, abstract and excerpt.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "output": {
           "allOf": [
             {

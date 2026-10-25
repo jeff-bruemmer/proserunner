@@ -205,6 +205,44 @@ fn formats_map_files_to_scanners() {
 }
 
 #[test]
+fn front_matter_keys_choose_what_is_checked() {
+    let env = Env::new();
+    env.write(
+        "docs/a.md",
+        "---\ntitle: A guide.\nlayout: utilize\nparams:\n  summary: In order to start.\n---\n\nText.\n",
+    );
+    assert_eq!(rules_found(&env, &["docs"]), ["default/heading-periods"]);
+
+    let config = |keys: &str| {
+        env.write(
+            ".proserunner/config.toml",
+            &format!("schema = 1\n[check]\nfront-matter = {keys}\n"),
+        );
+    };
+    config("[\"params.summary\"]");
+    assert_eq!(rules_found(&env, &["docs"]), ["default/compression"]);
+    let r = run(env.cmd().arg("config"));
+    assert!(
+        r.stdout
+            .contains("front-matter = [\"params.summary\"]  # .proserunner/config.toml"),
+        "{}",
+        r.stdout
+    );
+    config("[]");
+    assert!(rules_found(&env, &["docs"]).is_empty());
+    config("[\"params..summary\"]");
+    let r = run(env.cmd().arg("docs"));
+    assert_eq!(r.code, 2);
+    assert!(
+        r.stderr.starts_with(
+            "proserunner: .proserunner/config.toml: invalid front-matter key `params..summary`"
+        ),
+        "{}",
+        r.stderr
+    );
+}
+
+#[test]
 fn stdin_filename_finds_the_project_and_applies_its_settings() {
     let env = Env::new();
     // The project is under the working directory, so only the name finds it.

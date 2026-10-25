@@ -16,6 +16,7 @@ const OPTIONS: Options<'static> = Options {
     quoted_text: true,
     code_blocks: true,
     mask: None,
+    front_matter: scan::FRONT_MATTER,
 };
 
 /// An example its rule gets wrong, or a rule with no `bad` example.

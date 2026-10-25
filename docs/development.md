@@ -27,10 +27,12 @@ them as a library. `scan` doesn't depend on `rules`: a block's kind
 
 **Scanners** adapt an established parser for each format:
 pulldown-cmark (Markdown), markdown-rs (MDX), orgize (Org), html5gum
-(HTML), asciidoc-parser (AsciiDoc) and typst-syntax (Typst). None reads
-a known format by hand: where a parser keeps something to itself, such
-as a title's inline markup, the scanner parses that text again on its
-own. Each builds its blocks with `ViewBuilder`. It collapses
+(HTML), asciidoc-parser (AsciiDoc) and typst-syntax (Typst), and for
+front matter, saphyr-parser (YAML) and toml (TOML). None reads a known
+format by hand: where a parser keeps something to itself, such as a
+title's inline markup, the scanner parses that text again on its own.
+Where a parser decodes text, `decoded::push` lines it up with the
+source, escape by escape. Each builds its blocks with `ViewBuilder`. It collapses
 whitespace, drops markup, turns non-prose into placeholders, and keeps a
 map from each byte of the block back to the source. A scanner returns
 `Scanned { blocks, directives }`. It reads directives from its own comments

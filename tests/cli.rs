@@ -258,6 +258,39 @@ fn json_output() {
 }
 
 #[test]
+fn front_matter_issues_point_at_the_source() {
+    let env = Env::new();
+    // The title is the document's title, so heading rules check it, and
+    // the description's spans count its escape's source bytes.
+    let text = "---\ntitle: A guide.\ndescription: \"Caf\\u00E9 notes, in order to start.\"\nlayout: utilize\n---\n\nText.\n";
+    env.write("a.md", text);
+    let r = run(env.cmd().args(["a.md", "-o", "json"]));
+    let v: Value = serde_json::from_str(&r.stdout).unwrap();
+    let found: Vec<(&str, &str)> = v["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            let start = i["byte_start"].as_u64().unwrap() as usize;
+            let end = i["byte_end"].as_u64().unwrap() as usize;
+            (i["rule"].as_str().unwrap(), &text[start..end])
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("default/heading-periods", "."),
+            ("default/compression", "in order to")
+        ]
+    );
+    let r = run(env
+        .cmd()
+        .args(["--stdin-format", "mdx", "-o", "plain"])
+        .write_stdin(text));
+    assert_eq!(matched(&r), [".", "in order to"]);
+}
+
+#[test]
 fn quiet_drops_the_summary() {
     let env = Env::new();
     env.write("dirty.md", DIRTY);

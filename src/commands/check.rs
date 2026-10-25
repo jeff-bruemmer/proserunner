@@ -85,6 +85,13 @@ pub(crate) fn check(ctx: &Ctx, args: &CheckArgs, config_file: Option<&Path>) -> 
         config.code_blocks.value,
     );
     options.mask = Some(&mask);
+    let front_matter: Vec<&str> = config
+        .front_matter
+        .value
+        .iter()
+        .map(String::as_str)
+        .collect();
+    options.front_matter = &front_matter;
 
     let excluded = |p: &Path| config.exclude.is_match(&ctx.absolute(p));
     let format_of = |p: &Path| config.format_of(&ctx.absolute(p));

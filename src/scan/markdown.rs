@@ -1,12 +1,18 @@
 //! Markdown through `pulldown-cmark`. Only text inside paragraphs,
-//! headings, list items, table cells and block quotes is prose. Code,
-//! HTML, front matter and link destinations never reach the rules, so
-//! there's no need for rules to guess at markup. Inline control
-//! directives go in HTML comments.
+//! headings, list items, table cells and block quotes is prose, and the
+//! strings `front_matter` reads. Code, HTML, the rest of front matter and
+//! link destinations never reach the rules, so there's no need for rules
+//! to guess at markup. Inline control directives go in HTML comments.
 
-use pulldown_cmark::{Event, LinkType, Options as ParserOptions, Parser, Tag, TagEnd};
+use std::iter::Peekable;
+use std::ops::Range;
+
+use pulldown_cmark::{
+    Event, LinkType, MetadataBlockKind, Options as ParserOptions, Parser, Tag, TagEnd,
+};
 
 use super::control::{self, Directive};
+use super::front_matter::{self, Syntax};
 use super::piece::Piece;
 use super::view::ViewBuilder;
 use super::{Block, Options, Scanned, Scope};
@@ -27,7 +33,7 @@ struct Scanner<'src> {
     source: &'src str,
     options: Options<'src>,
     stack: Vec<Container>,
-    /// Inside code (unless checked), HTML blocks or front matter.
+    /// Inside code (unless checked) or HTML blocks.
     skip: usize,
     /// Inside an autolink, whose text is its URL.
     autolink: bool,
@@ -39,13 +45,87 @@ struct Scanner<'src> {
 }
 
 pub(super) fn scan(source: &str, options: Options<'_>) -> Scanned {
-    let parser_options = ParserOptions::ENABLE_TABLES
+    let mut events = Parser::new_ext(source, extensions() | metadata(source))
+        .into_offset_iter()
+        .peekable();
+    let (mut blocks, body) = take_front_matter(&mut events, source, options.front_matter);
+    let rest = read(source, options, events).unwrap_or_else(|| {
+        // pulldown-cmark reads a metadata block wherever a block starts,
+        // but only one at the very start is front matter. Read the body
+        // again without them.
+        let text = source.get(body..).unwrap_or("");
+        let events = Parser::new_ext(text, extensions()).into_offset_iter();
+        let mut rest = read(text, options, events).unwrap_or_default();
+        rest.remap(|i| i + body);
+        rest
+    });
+    blocks.extend(rest.blocks);
+    Scanned {
+        blocks,
+        directives: rest.directives,
+    }
+}
+
+fn extensions() -> ParserOptions {
+    ParserOptions::ENABLE_TABLES
         | ParserOptions::ENABLE_FOOTNOTES
         | ParserOptions::ENABLE_STRIKETHROUGH
         | ParserOptions::ENABLE_TASKLISTS
-        | ParserOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS
-        | ParserOptions::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+}
 
+/// The metadata blocks to read: only the kind `source` starts with, if
+/// any, since only front matter is one.
+fn metadata(source: &str) -> ParserOptions {
+    if source.starts_with("---") {
+        ParserOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS
+    } else if source.starts_with("+++") {
+        ParserOptions::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
+    } else {
+        ParserOptions::empty()
+    }
+}
+
+/// The blocks of the front matter `events` start with, if they do, and
+/// where the body after it starts.
+fn take_front_matter<'a>(
+    events: &mut Peekable<impl Iterator<Item = (Event<'a>, Range<usize>)>>,
+    source: &str,
+    keys: &[&str],
+) -> (Vec<Block>, usize) {
+    let syntax = match events.peek() {
+        Some((Event::Start(Tag::MetadataBlock(kind)), range)) if range.start == 0 => match kind {
+            MetadataBlockKind::YamlStyle => Syntax::Yaml,
+            MetadataBlockKind::PlusesStyle => Syntax::Toml,
+        },
+        _ => return (Vec::new(), 0),
+    };
+    // Its text comes in runs that end before each `\r`.
+    let mut text: Option<Range<usize>> = None;
+    for (event, range) in events.by_ref() {
+        match event {
+            Event::Text(_) => text = Some(text.map_or(range.start, |t| t.start)..range.end),
+            Event::End(TagEnd::MetadataBlock(_)) => {
+                let blocks = text
+                    .and_then(|t| {
+                        let text = source.get(t.clone())?;
+                        Some(front_matter::blocks(syntax, text, t.start, keys))
+                    })
+                    .unwrap_or_default();
+                return (blocks, range.end);
+            }
+            _ => {}
+        }
+    }
+    (Vec::new(), source.len())
+}
+
+/// The blocks and directives of `events`, or `None` at a metadata block,
+/// which isn't front matter after the very start.
+fn read<'a>(
+    source: &str,
+    options: Options<'_>,
+    events: impl Iterator<Item = (Event<'a>, Range<usize>)>,
+) -> Option<Scanned> {
     let mut s = Scanner {
         source,
         options,
@@ -57,14 +137,17 @@ pub(super) fn scan(source: &str, options: Options<'_>) -> Scanned {
         html: None,
         directives: Vec::new(),
     };
-    for (event, range) in Parser::new_ext(source, parser_options).into_offset_iter() {
+    for (event, range) in events {
+        if matches!(event, Event::Start(Tag::MetadataBlock(_))) {
+            return None;
+        }
         s.event(event, range.start, range.end);
     }
     s.close();
-    Scanned {
+    Some(Scanned {
         blocks: s.blocks,
         directives: s.directives,
-    }
+    })
 }
 
 impl<'src> Scanner<'src> {
@@ -141,8 +224,8 @@ impl<'src> Scanner<'src> {
             Tag::Item => Container::Item,
             Tag::BlockQuote(_) => Container::BlockQuote,
             Tag::CodeBlock(_) => Container::Code,
-            Tag::HtmlBlock | Tag::MetadataBlock(_) => Container::Other,
-            Tag::Paragraph
+            Tag::HtmlBlock
+            | Tag::Paragraph
             | Tag::List(_)
             | Tag::Table(_)
             | Tag::TableHead
@@ -157,7 +240,7 @@ impl<'src> Scanner<'src> {
         self.close();
         let skipped = match tag {
             Tag::CodeBlock(_) => !self.options.code_blocks,
-            Tag::HtmlBlock | Tag::MetadataBlock(_) => true,
+            Tag::HtmlBlock => true,
             _ => false,
         };
         if skipped || self.skip > 0 {
@@ -283,8 +366,59 @@ mod tests {
 
     #[test]
     fn code_front_matter_and_html_are_skipped() {
-        let src = "---\ntitle: utilize\n---\n\nProse.\n\n```\nutilize\n```\n\n    indented code\n\n<div>\nutilize\n</div>\n";
+        let src = "---\nlayout: utilize\n---\n\nProse.\n\n```\nutilize\n```\n\n    indented code\n\n<div>\nutilize\n</div>\n";
         assert_eq!(prose(src), ["Prose."]);
+    }
+
+    #[test]
+    fn front_matter_is_read() {
+        let src = "---\ntitle: A very unique title\nlayout: utilize\n---\n\n# One\n\nText.\n";
+        let blocks = scan(src, Options::default()).blocks;
+        assert_eq!(
+            levels(&blocks),
+            [
+                ("A very unique title", Some(0)),
+                ("One", Some(1)),
+                ("Text.", None)
+            ]
+        );
+        let b = &blocks[0];
+        let i = b.text.find("very unique").unwrap();
+        assert_eq!(&src[b.source_range(src, i..i + 11)], "very unique");
+
+        let src = "+++\r\ndescription = \"In order to start.\"\r\n+++\r\n\r\nText.\r\n";
+        let blocks = scan(src, Options::default()).blocks;
+        assert_eq!(texts(&blocks), ["In order to start.", "Text."]);
+        assert_eq!(blocks[0].kind, Scope::Paragraph);
+        let i = blocks[0].text.find("start").unwrap();
+        assert_eq!(&src[blocks[0].source_range(src, i..i + 5)], "start");
+    }
+
+    #[test]
+    fn front_matter_is_only_at_the_start() {
+        // A `---` after the start is a thematic break, and a line under
+        // the next `---` is a heading, however a metadata block would end.
+        assert_eq!(prose("Text.\n\n---\nNext.\n\n---\n"), ["Text.", "Next."]);
+        assert_eq!(
+            prose("---\n\nText.\n\n---\nNext.\n\n...\n"),
+            ["Text.", "Next.", "..."]
+        );
+        assert_eq!(prose("\n---\ntitle: x\n---\n"), ["title: x"]);
+        assert_eq!(
+            prose("+++\n\nText.\n\n+++\nNext.\n+++\n"),
+            ["+++", "Text.", "+++ Next. +++"]
+        );
+    }
+
+    #[test]
+    fn the_body_after_front_matter_is_read_again_in_place() {
+        let src = "---\ntitle: A title\n---\n\n---\nNext.\n\n<!-- proserunner-disable -->\n\n---\n";
+        let scanned = scan(src, Options::default());
+        assert_eq!(texts(&scanned.blocks), ["A title", "Next."]);
+        let next = &scanned.blocks[1];
+        assert_eq!(&src[next.source_range(src, 0..5)], "Next.");
+        let action = &scanned.directives[0].action;
+        assert_eq!(&src[action.at..action.at + 19], "proserunner-disable");
     }
 
     #[test]
